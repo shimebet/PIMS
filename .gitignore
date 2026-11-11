@@ -1,0 +1,47 @@
+﻿# Dependencies
+**/node_modules/
+
+# Build output
+**/dist/
+**/build/
+**/coverage/
+**/.vite/
+
+# Environment files and secrets
+**/.env
+**/.env.*
+!**/.env.example
+!**/.env.sample
+**/*.pem
+**/*.key
+
+# Local databases
+**/*.db
+**/*.sqlite
+**/*.sqlite3
+
+# Patient data and generated reports
+*.csv
+*.pdf
+**/uploads/
+**/exports/
+**/backups/
+**/auth-step10-backup/
+
+# Temporary and backup files
+*.bak
+*.bak-*
+*-current.txt
+*-review.txt
+*.log
+
+# Editor and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Local agent configuration
+**/.agents/
+**/.claude/
+**/.windsurf/
