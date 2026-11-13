@@ -1,4 +1,4 @@
-﻿import {
+import {
   BrowserRouter,
   Navigate,
   Route,
@@ -13,8 +13,12 @@ import AppLayout from './layouts/AppLayout';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import PatientsPage from './pages/PatientsPage';
+import AppointmentsPage from './pages/AppointmentsPage';
 import EncountersPage from './pages/EncountersPage';
 import HealthReportsPage from './pages/HealthReportsPage';
+import AppointmentReportsPage from './pages/AppointmentReportsPage';
+import LaboratoryPage from './pages/LaboratoryPage';
+import RadiologyPage from './pages/RadiologyPage';
 
 function ProtectedRoute({
   children,
@@ -74,6 +78,31 @@ export default function App() {
         />
 
         <Route
+          path="/radiology"
+          element={
+            <ProtectedRoute>
+              <RadiologyPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/laboratory"
+          element={
+            <ProtectedRoute>
+              <LaboratoryPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/appointments"
+          element={
+            <ProtectedRoute>
+              <AppointmentsPage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
           path="/patients"
           element={
             <ProtectedRoute>
@@ -89,6 +118,15 @@ export default function App() {
     </ProtectedRoute>
   }
 />
+        <Route
+          path="/reports/appointments"
+          element={
+            <ProtectedRoute>
+              <AppointmentReportsPage />
+            </ProtectedRoute>
+          }
+        />
+
 <Route
   path="/reports"
   element={
@@ -100,8 +138,8 @@ export default function App() {
 
  {[
   ['clinical', 'Clinical Records'],
-  ['laboratory', 'Laboratory'],
-  ['radiology', 'Radiology'],
+  
+
   ['administration', 'Administration'],
   ['audit', 'Audit Logs'],
 ].map(([path, title]) => (

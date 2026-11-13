@@ -1,0 +1,733 @@
+import { useCallback, useEffect, useState } from 'react';
+import axios from 'axios';
+
+import {
+  Alert,
+  Box,
+  Button,
+  Chip,
+  CircularProgress,
+  FormControl,
+  InputLabel,
+  MenuItem,
+  Paper,
+  Select,
+  TextField,
+  Stack,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Typography,
+} from '@mui/material';
+
+import RefreshIcon from '@mui/icons-material/Refresh';
+import EventNoteIcon from '@mui/icons-material/EventNote';
+
+import { useAuth } from '../auth/AuthContext';
+import { patientsApi } from '../api/patients.api';
+import type { Patient } from '../types/patient';
+import AppointmentCreateDialog from '../components/appointments/AppointmentCreateDialog';
+import AppointmentDetailsDialog from '../components/appointments/AppointmentDetailsDialog';
+import AppointmentStatusDialog from '../components/appointments/AppointmentStatusDialog';
+import AppointmentRescheduleDialog from '../components/appointments/AppointmentRescheduleDialog';
+import {
+  appointmentsApi,
+  type Appointment,
+  type AppointmentStatus,
+} from '../api/appointments.api';
+
+const ETHIOPIA_TIME_ZONE = 'Africa/Addis_Ababa';
+
+function formatAppointmentDate(value: string): string {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return '-';
+  }
+
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: ETHIOPIA_TIME_ZONE,
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+  }).format(date);
+}
+
+function formatAppointmentTime(value?: string | null): string {
+  if (!value) return '-';
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return '-';
+  }
+
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: ETHIOPIA_TIME_ZONE,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  }).format(date);
+}
+
+function getStatusColor(
+  status: AppointmentStatus,
+):
+  | 'success'
+  | 'primary'
+  | 'warning'
+  | 'error'
+  | 'default' {
+  switch (status) {
+    case 'CONFIRMED':
+      return 'primary';
+
+    case 'CHECKED_IN':
+    case 'COMPLETED':
+      return 'success';
+
+    case 'CANCELLED':
+    case 'NO_SHOW':
+      return 'error';
+
+    case 'SCHEDULED':
+      return 'warning';
+
+    default:
+      return 'default';
+  }
+}
+
+function getErrorMessage(error: unknown): string {
+  if (axios.isAxiosError(error)) {
+    if (error.response?.status === 401) {
+      return 'Your session has expired. Please sign in again.';
+    }
+
+    if (error.response?.status === 403) {
+      return 'You do not have permission to view appointments.';
+    }
+
+    const message: unknown = error.response?.data?.message;
+
+    if (typeof message === 'string') {
+      return message;
+    }
+
+    if (Array.isArray(message)) {
+      return message.map(String).join(', ');
+    }
+  }
+
+  return 'Unable to load appointments. Please try again.';
+}
+
+export default function AppointmentsPage() {
+  const { user } = useAuth();
+
+  const canRead =
+    user?.permissions.includes('appointment.read') ?? false;
+
+  const canReadPatient =
+    user?.permissions.includes('patient.read') ?? false;
+
+  const canCreate =
+    user?.permissions.includes('appointment.create') ?? false;
+
+  const canUpdate =
+    user?.permissions.includes('appointment.update') ?? false;
+
+  const [createOpen, setCreateOpen] = useState(false);
+
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [statusOpen, setStatusOpen] = useState(false);
+  const [rescheduleOpen, setRescheduleOpen] = useState(false);
+  const [selectedAppointment, setSelectedAppointment] =
+    useState<Appointment | null>(null);
+  const [detailsLoading, setDetailsLoading] = useState(false);
+  const [detailsError, setDetailsError] = useState<string | null>(null);
+
+  const [appointments, setAppointments] =
+    useState<Appointment[]>([]);
+
+  const [patientMap, setPatientMap] =
+    useState<Record<string, Patient>>({});
+
+  const [patientLookupLoading, setPatientLookupLoading] =
+    useState(false);
+
+  const [patientLookupError, setPatientLookupError] =
+    useState(false);
+
+  const [showHistory, setShowHistory] = useState(false);
+
+  const [searchInput, setSearchInput] = useState('');
+  const [statusInput, setStatusInput] = useState('');
+  const [dateFromInput, setDateFromInput] = useState('');
+  const [dateToInput, setDateToInput] = useState('');
+
+  const [appliedFilters, setAppliedFilters] = useState({
+    search: '',
+    status: '',
+    dateFrom: '',
+    dateTo: '',
+  });
+
+  const [filterError, setFilterError] = useState<string | null>(null);
+
+  const visibleAppointments = appointments.filter((appointment) =>
+    showHistory
+      ? ['NO_SHOW', 'CANCELLED'].includes(appointment.status)
+      : !['NO_SHOW', 'CANCELLED'].includes(appointment.status),
+  );
+
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadAppointments = useCallback(async () => {
+    if (!canRead) return;
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const result = await appointmentsApi.list({
+        ...(appliedFilters.search
+          ? { search: appliedFilters.search }
+          : {}),
+        ...(appliedFilters.status
+          ? { status: appliedFilters.status as AppointmentStatus }
+          : {}),
+        ...(appliedFilters.dateFrom
+          ? {
+              dateFrom: `${appliedFilters.dateFrom}T00:00:00+03:00`,
+            }
+          : {}),
+        ...(appliedFilters.dateTo
+          ? {
+              dateTo: `${appliedFilters.dateTo}T23:59:59.999+03:00`,
+            }
+          : {}),
+      });
+
+
+      setAppointments(result);
+    } catch (err: unknown) {
+      setError(getErrorMessage(err));
+    } finally {
+      setLoading(false);
+    }
+  }, [canRead, appliedFilters]);
+
+  useEffect(() => {
+    void loadAppointments();
+  }, [loadAppointments]);
+
+  const handleApplyFilters = () => {
+    if (
+      dateFromInput &&
+      dateToInput &&
+      dateFromInput > dateToInput
+    ) {
+      setFilterError('From date must not be later than To date.');
+      return;
+    }
+
+    if (searchInput.trim() && searchInput.trim().length > 100) {
+      setFilterError('Search must not exceed 100 characters.');
+      return;
+    }
+
+    setFilterError(null);
+
+    setAppliedFilters({
+      search: searchInput.trim(),
+      status: statusInput,
+      dateFrom: dateFromInput,
+      dateTo: dateToInput,
+    });
+  };
+
+  const handleClearFilters = () => {
+    setSearchInput('');
+    setStatusInput('');
+    setDateFromInput('');
+    setDateToInput('');
+    setFilterError(null);
+
+    setAppliedFilters({
+      search: '',
+      status: '',
+      dateFrom: '',
+      dateTo: '',
+    });
+  };
+
+  useEffect(() => {
+    if (!canReadPatient || !canRead) {
+      setPatientMap({});
+      setPatientLookupError(false);
+      return;
+    }
+
+    const patientIds = [
+      ...new Set(appointments.map((item) => item.patientId)),
+    ];
+
+    if (patientIds.length === 0) {
+      setPatientMap({});
+      setPatientLookupError(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadPatients = async () => {
+      setPatientLookupLoading(true);
+      setPatientLookupError(false);
+
+      const results = await Promise.allSettled(
+        patientIds.map((id) => patientsApi.getById(id)),
+      );
+
+      if (cancelled) return;
+
+      const nextMap: Record<string, Patient> = {};
+      let failed = false;
+
+      results.forEach((result, index) => {
+        if (result.status === 'fulfilled') {
+          nextMap[patientIds[index]] = result.value;
+        } else {
+          failed = true;
+        }
+      });
+
+      setPatientMap(nextMap);
+      setPatientLookupError(failed);
+      setPatientLookupLoading(false);
+    };
+
+    void loadPatients();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [appointments, canReadPatient, canRead]);
+
+  const handleViewDetails = async (id: string) => {
+    setSelectedAppointment(null);
+    setDetailsError(null);
+    setDetailsOpen(true);
+    setDetailsLoading(true);
+
+    try {
+      const result = await appointmentsApi.getById(id);
+      setSelectedAppointment(result);
+    } catch (err: unknown) {
+      setDetailsError(getErrorMessage(err));
+    } finally {
+      setDetailsLoading(false);
+    }
+  };
+
+  if (!canRead) {
+    return (
+      <Alert severity="warning">
+        You do not have permission to view appointments.
+      </Alert>
+    );
+  }
+
+  return (
+    <Box>
+      <Stack
+        direction={{ xs: 'column', sm: 'row' }}
+        spacing={2}
+        sx={{
+          mb: 3,
+          alignItems: {
+            xs: 'flex-start',
+            sm: 'center',
+          },
+          justifyContent: 'space-between',
+        }}
+      >
+        <Box>
+          <Typography variant="h5" sx={{ fontWeight: 700 }}>
+            Appointment Management
+          </Typography>
+
+          <Typography variant="body2" color="text.secondary">
+            Schedule, manage, and track patient appointments.
+          </Typography>
+        </Box>
+
+        <Stack direction="row" spacing={1}>
+          {canCreate && (
+            <Button
+              variant="contained"
+              onClick={() => setCreateOpen(true)}
+            >
+              New Appointment
+            </Button>
+          )}
+
+          <Button
+            variant="outlined"
+            onClick={() => setShowHistory((value) => !value)}
+          >
+            {showHistory ? 'Active Appointments' : 'Show History'}
+          </Button>
+
+          <Button
+            variant="outlined"
+            startIcon={<RefreshIcon />}
+            onClick={() => void loadAppointments()}
+            disabled={loading}
+          >
+            Refresh
+          </Button>
+        </Stack>
+      </Stack>
+
+      <Paper sx={{ p: 2, mb: 2 }}>
+        <Stack spacing={2}>
+          <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+            Search and Filter Appointments
+          </Typography>
+
+          <Stack
+            direction={{ xs: 'column', md: 'row' }}
+            spacing={2}
+          >
+            <TextField
+              label="Search appointment or patient"
+              placeholder="Appointment No., name, MRN, patient number"
+              value={searchInput}
+              onChange={(event) => setSearchInput(event.target.value)}
+              size="small"
+              fullWidth
+              slotProps={{ htmlInput: { maxLength: 100 } }}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  handleApplyFilters();
+                }
+              }}
+            />
+
+            <FormControl size="small" sx={{ minWidth: 190 }}>
+              <InputLabel id="appointment-status-filter-label">
+                Status
+              </InputLabel>
+              <Select
+                labelId="appointment-status-filter-label"
+                label="Status"
+                value={statusInput}
+                onChange={(event) => setStatusInput(event.target.value)}
+              >
+                <MenuItem value="">All Statuses</MenuItem>
+                <MenuItem value="SCHEDULED">Scheduled</MenuItem>
+                <MenuItem value="CONFIRMED">Confirmed</MenuItem>
+                <MenuItem value="CHECKED_IN">Checked In</MenuItem>
+                <MenuItem value="COMPLETED">Completed</MenuItem>
+                <MenuItem value="CANCELLED">Cancelled</MenuItem>
+                <MenuItem value="NO_SHOW">No Show</MenuItem>
+              </Select>
+            </FormControl>
+
+            <TextField
+              label="From Date"
+              type="date"
+              value={dateFromInput}
+              onChange={(event) => setDateFromInput(event.target.value)}
+              size="small"
+              slotProps={{ inputLabel: { shrink: true } }}
+              sx={{ minWidth: 170 }}
+            />
+
+            <TextField
+              label="To Date"
+              type="date"
+              value={dateToInput}
+              onChange={(event) => setDateToInput(event.target.value)}
+              size="small"
+              slotProps={{ inputLabel: { shrink: true } }}
+              sx={{ minWidth: 170 }}
+            />
+          </Stack>
+
+          {filterError && (
+            <Alert severity="warning">
+              {filterError}
+            </Alert>
+          )}
+
+          <Stack direction="row" spacing={1}>
+            <Button
+              variant="contained"
+              onClick={handleApplyFilters}
+              disabled={loading}
+            >
+              Search
+            </Button>
+
+            <Button
+              variant="outlined"
+              onClick={handleClearFilters}
+              disabled={loading}
+            >
+              Clear Filters
+            </Button>
+          </Stack>
+        </Stack>
+      </Paper>
+
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {error}
+        </Alert>
+      )}
+
+      {patientLookupError && canReadPatient && (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          Some patient details could not be loaded.
+          Appointment records remain available.
+        </Alert>
+      )}
+
+      <Paper sx={{ overflow: 'hidden' }}>
+        {loading ? (
+          <Box sx={{ p: 5, textAlign: 'center' }}>
+            <CircularProgress />
+
+            <Typography
+              variant="body2"
+              color="text.secondary"
+              sx={{ mt: 2 }}
+            >
+              Loading appointments...
+            </Typography>
+          </Box>
+        ) : (
+          <TableContainer>
+            <Table>
+              <TableHead>
+                <TableRow>
+                  <TableCell>Appointment No.</TableCell>
+                  <TableCell>Patient</TableCell>
+                  <TableCell>MRN / Patient No.</TableCell>
+                  <TableCell>Type</TableCell>
+                  <TableCell>Date</TableCell>
+                  <TableCell>Time</TableCell>
+                  <TableCell>Status</TableCell>
+                  <TableCell align="right">Actions</TableCell>
+                </TableRow>
+              </TableHead>
+
+              <TableBody>
+                {visibleAppointments.map((appointment) => (
+                  <TableRow
+                    key={appointment.id}
+                    hover
+                  >
+                    <TableCell>
+                      {appointment.appointmentNumber}
+                    </TableCell>
+
+                    <TableCell>
+                      {canReadPatient
+                        ? patientMap[appointment.patientId]
+                          ? [
+                              patientMap[appointment.patientId].firstName,
+                              patientMap[appointment.patientId].middleName,
+                              patientMap[appointment.patientId].lastName,
+                            ]
+                              .filter(Boolean)
+                              .join(' ')
+                          : patientLookupLoading
+                            ? 'Loading...'
+                            : 'Unavailable'
+                        : 'Restricted'}
+                    </TableCell>
+
+                    <TableCell>
+                      {canReadPatient
+                        ? patientMap[appointment.patientId]
+                          ? patientMap[appointment.patientId].medicalRecordNumber
+                            ? patientMap[appointment.patientId].medicalRecordNumber
+                            : `Patient No: ${patientMap[appointment.patientId].patientNumber}`
+                          : patientLookupLoading
+                            ? 'Loading...'
+                            : '-'
+                        : 'Restricted'}
+                    </TableCell>
+
+                    <TableCell>
+                      {appointment.appointmentType || '-'}
+                    </TableCell>
+
+                    <TableCell>
+                      {formatAppointmentDate(
+                        appointment.scheduledStart,
+                      )}
+                    </TableCell>
+
+                    <TableCell>
+                      {formatAppointmentTime(
+                        appointment.scheduledStart,
+                      )}
+                      {' - '}
+                      {formatAppointmentTime(
+                        appointment.scheduledEnd,
+                      )}
+                    </TableCell>
+
+                    <TableCell>
+                      <Chip
+                        label={appointment.status.replaceAll('_', ' ')}
+                        color={getStatusColor(appointment.status)}
+                        size="small"
+                      />
+                    </TableCell>
+
+                    <TableCell align="right">
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        onClick={() =>
+                          void handleViewDetails(appointment.id)
+                        }
+                      >
+                        View
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+
+                {visibleAppointments.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={8}>
+                      <Stack
+                        spacing={2}
+                        sx={{
+                          alignItems: 'center',
+                          py: 5,
+                        }}
+                      >
+                        <EventNoteIcon
+                          color="disabled"
+                          sx={{ fontSize: 44 }}
+                        />
+
+                        <Typography color="text.secondary">
+                          No appointments found.
+                        </Typography>
+                      </Stack>
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        )}
+      </Paper>
+
+      <Typography
+        variant="caption"
+        color="text.secondary"
+        sx={{ display: 'block', mt: 2 }}
+      >
+        Showing {visibleAppointments.length} appointment(s).
+        Times are displayed in Ethiopia local time.
+      </Typography>
+      {canCreate && (
+        <AppointmentCreateDialog
+          open={createOpen}
+          onClose={() => setCreateOpen(false)}
+          onCreated={() => {
+            void loadAppointments();
+          }}
+        />
+      )}
+      {canUpdate && (
+        <AppointmentStatusDialog
+          open={statusOpen}
+          appointment={selectedAppointment}
+          canCancel={false}
+          onClose={() => setStatusOpen(false)}
+          onUpdated={() => {
+            void loadAppointments();
+            if (selectedAppointment) {
+              void appointmentsApi
+                .getById(selectedAppointment.id)
+                .then(setSelectedAppointment);
+            }
+          }}
+        />
+      )}
+      {canUpdate && (
+        <AppointmentRescheduleDialog
+          open={rescheduleOpen}
+          appointment={selectedAppointment}
+          onClose={() => setRescheduleOpen(false)}
+          onRescheduled={(updated) => {
+            setSelectedAppointment(updated);
+            void loadAppointments();
+          }}
+        />
+      )}
+
+      <AppointmentDetailsDialog
+        canUpdate={canUpdate}
+        onManageStatus={() => {
+          setDetailsOpen(false);
+          setStatusOpen(true);
+        }}
+        onReschedule={() => {
+          setDetailsOpen(false);
+          setRescheduleOpen(true);
+        }}
+        open={detailsOpen}
+        appointment={selectedAppointment}
+        patientName={
+          !canReadPatient
+            ? 'Restricted'
+            : selectedAppointment &&
+                patientMap[selectedAppointment.patientId]
+              ? [
+                  patientMap[selectedAppointment.patientId].firstName,
+                  patientMap[selectedAppointment.patientId].middleName,
+                  patientMap[selectedAppointment.patientId].lastName,
+                ]
+                  .filter(Boolean)
+                  .join(' ')
+              : patientLookupLoading
+                ? 'Loading...'
+                : 'Unavailable'
+        }
+        patientIdentifier={
+          !canReadPatient
+            ? 'Restricted'
+            : selectedAppointment &&
+                patientMap[selectedAppointment.patientId]
+              ? patientMap[selectedAppointment.patientId].medicalRecordNumber ||
+                `Patient No: ${patientMap[selectedAppointment.patientId].patientNumber}`
+              : patientLookupLoading
+                ? 'Loading...'
+                : '-'
+        }
+        loading={detailsLoading}
+        error={detailsError}
+        onClose={() => {
+          setDetailsOpen(false);
+          setSelectedAppointment(null);
+          setDetailsError(null);
+        }}
+      />
+    </Box>
+  );
+}

@@ -184,7 +184,60 @@ function saveBlob(
    HEALTH OFFICE REPORTING API
 ============================================ */
 
+/* ============================================
+   APPOINTMENT SUMMARY REPORTING
+============================================ */
+
+export interface AppointmentSummaryQuery {
+  dateFrom: string;
+  dateTo: string;
+}
+
+export interface AppointmentSummaryResponse {
+  reportType: 'APPOINTMENT_SUMMARY';
+
+  facility: {
+    id: string;
+    code: string;
+    name: string;
+  };
+
+  period: {
+    dateFrom: string;
+    dateTo: string;
+    timezone: string;
+  };
+
+  generatedAt: string;
+
+  summary: {
+    total: number;
+    scheduled: number;
+    confirmed: number;
+    checkedIn: number;
+    completed: number;
+    cancelled: number;
+    noShow: number;
+  };
+}
 export const reportsApi = {
+  /**
+   * GET /reports/appointments/summary
+   *
+   * Facility-scoped appointment summary.
+   * Requires report.read permission.
+   */
+  async getAppointmentSummary(
+    params: AppointmentSummaryQuery,
+  ): Promise<AppointmentSummaryResponse> {
+    const response = await api.get<AppointmentSummaryResponse>(
+      '/reports/appointments/summary',
+      { params },
+    );
+
+    return response.data;
+  },
+
   /**
    * GET /reports/health
    *

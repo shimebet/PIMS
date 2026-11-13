@@ -32,6 +32,8 @@ import RefreshIcon from '@mui/icons-material/Refresh';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 
 import { useAuth } from '../auth/AuthContext';
+import CreateEncounterDialog from '../components/encounters/CreateEncounterDialog';
+import EncounterClinicalActions from '../components/encounters/EncounterClinicalActions';
 
 import {
   encountersApi,
@@ -122,6 +124,9 @@ export default function EncountersPage() {
   const canRead =
     user?.permissions.includes('encounter.read') ?? false;
 
+  const canCreate =
+    user?.permissions.includes('encounter.create') ?? false;
+
   const [page, setPage] = useState(0);
 
   const [rowsPerPage, setRowsPerPage] =
@@ -138,6 +143,9 @@ export default function EncountersPage() {
     useState<string | null>(null);
 
   const [refreshKey, setRefreshKey] = useState(0);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [successMessage, setSuccessMessage] =
+    useState<string | null>(null);
 
   const [selectedEncounterId, setSelectedEncounterId] =
     useState<string | null>(null);
@@ -256,6 +264,25 @@ export default function EncountersPage() {
 
   return (
     <Box>
+      <CreateEncounterDialog
+        open={createDialogOpen}
+        onClose={() => setCreateDialogOpen(false)}
+        onCreated={(encounter) => {
+          setSuccessMessage(
+            `Encounter ${encounter.encounterNumber} created successfully.`,
+          );
+          setPage(0);
+          setStatus('');
+          setRefreshKey((value) => value + 1);
+        }}
+      />
+
+      {successMessage && (
+        <Alert severity="success" sx={{ mb: 2 }}>
+          {successMessage}
+        </Alert>
+      )}
+
       {/* PAGE HEADER */}
 
       <Stack
@@ -284,16 +311,27 @@ export default function EncountersPage() {
           </Typography>
         </Box>
 
-        <Button
-          variant="outlined"
-          startIcon={<RefreshIcon />}
+        <Stack direction="row" spacing={2}>
+          {canCreate && (
+            <Button
+              variant="contained"
+              onClick={() => setCreateDialogOpen(true)}
+            >
+              Create Encounter
+            </Button>
+          )}
+
+          <Button
+            variant="outlined"
+            startIcon={<RefreshIcon />}
           onClick={() =>
             setRefreshKey((value) => value + 1)
           }
           disabled={loading}
         >
-          Refresh
-        </Button>
+            Refresh
+          </Button>
+        </Stack>
       </Stack>
 
       {/* FILTERS */}
@@ -586,6 +624,17 @@ export default function EncountersPage() {
                   selectedEncounter.endedAt,
                 )}
               </Typography>
+              <EncounterClinicalActions
+                encounterId={selectedEncounter.id}
+                encounterNumber={selectedEncounter.encounterNumber}
+                status={selectedEncounter.status}
+                permissions={user?.permissions ?? []}
+                onUpdated={() => {
+                  setRefreshKey((value) => value + 1);
+                  setSelectedEncounterId(null);
+                  setSelectedEncounter(null);
+                }}
+              />
             </Stack>
           )}
         </DialogContent>

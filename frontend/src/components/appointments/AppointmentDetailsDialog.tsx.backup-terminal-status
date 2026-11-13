@@ -1,0 +1,228 @@
+import {
+  Alert,
+  Box,
+  Button,
+  Chip,
+  CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Divider,
+  Grid,
+  Typography,
+} from '@mui/material';
+
+import type { Appointment } from '../../api/appointments.api';
+
+interface Props {
+  open: boolean;
+  appointment: Appointment | null;
+  loading: boolean;
+  error: string | null;
+  onClose: () => void;
+  canUpdate?: boolean;
+  onManageStatus?: () => void;
+}
+
+function formatDate(value?: string | null): string {
+  if (!value) return '-';
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) return '-';
+
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Africa/Addis_Ababa',
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  }).format(date);
+}
+
+function Detail({
+  label,
+  value,
+}: {
+  label: string;
+  value?: string | null;
+}) {
+  return (
+    <Box>
+      <Typography
+        variant="caption"
+        color="text.secondary"
+      >
+        {label}
+      </Typography>
+
+      <Typography variant="body1" sx={{ fontWeight: 500 }}>
+        {value || '-'}
+      </Typography>
+    </Box>
+  );
+}
+
+export default function AppointmentDetailsDialog({
+  open,
+  appointment,
+  loading,
+  error,
+  onClose,
+  canUpdate = false,
+  onManageStatus,
+}: Props) {
+  return (
+    <Dialog
+      open={open}
+      onClose={onClose}
+      fullWidth
+      maxWidth="md"
+    >
+      <DialogTitle>Appointment Details</DialogTitle>
+
+      <DialogContent dividers>
+        {loading && (
+          <Box sx={{ textAlign: 'center', py: 5 }}>
+            <CircularProgress />
+          </Box>
+        )}
+
+        {error && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            {error}
+          </Alert>
+        )}
+
+        {!loading && appointment && (
+          <Box>
+            <Box
+              sx={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                mb: 3,
+              }}
+            >
+              <Typography
+                variant="h6"
+                sx={{ fontWeight: 700 }}
+              >
+                {appointment.appointmentNumber}
+              </Typography>
+
+              <Chip
+                label={appointment.status.replaceAll('_', ' ')}
+                color={
+                  appointment.status === 'COMPLETED'
+                    ? 'success'
+                    : appointment.status === 'CANCELLED'
+                      ? 'error'
+                      : 'primary'
+                }
+              />
+            </Box>
+
+            <Grid container spacing={3}>
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <Detail
+                  label="Patient ID"
+                  value={appointment.patientId}
+                />
+              </Grid>
+
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <Detail
+                  label="Appointment Type"
+                  value={appointment.appointmentType}
+                />
+              </Grid>
+
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <Detail
+                  label="Scheduled Start"
+                  value={formatDate(appointment.scheduledStart)}
+                />
+              </Grid>
+
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <Detail
+                  label="Scheduled End"
+                  value={formatDate(appointment.scheduledEnd)}
+                />
+              </Grid>
+
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <Detail
+                  label="Department ID"
+                  value={appointment.departmentId}
+                />
+              </Grid>
+
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <Detail
+                  label="Practitioner ID"
+                  value={appointment.practitionerId}
+                />
+              </Grid>
+
+              <Grid size={{ xs: 12 }}>
+                <Divider />
+              </Grid>
+
+              <Grid size={{ xs: 12 }}>
+                <Detail
+                  label="Reason"
+                  value={appointment.reason}
+                />
+              </Grid>
+
+              <Grid size={{ xs: 12 }}>
+                <Detail
+                  label="Notes"
+                  value={appointment.notes}
+                />
+              </Grid>
+
+              <Grid size={{ xs: 12 }}>
+                <Divider />
+              </Grid>
+
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <Detail
+                  label="Created At"
+                  value={formatDate(appointment.createdAt)}
+                />
+              </Grid>
+
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <Detail
+                  label="Last Updated"
+                  value={formatDate(appointment.updatedAt)}
+                />
+              </Grid>
+            </Grid>
+          </Box>
+        )}
+      </DialogContent>
+
+      <DialogActions>
+        {canUpdate && appointment && (
+          <Button
+            variant="contained"
+            onClick={onManageStatus}
+          >
+            Manage Status
+          </Button>
+        )}
+
+        <Button onClick={onClose}>
+          Close
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}

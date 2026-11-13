@@ -1,0 +1,323 @@
+import { useCallback, useEffect, useState } from 'react';
+import {
+  Alert,
+  Box,
+  Button,
+  Card,
+  CardContent,
+  Chip,
+  CircularProgress,
+  Grid,
+  Stack,
+  Typography,
+} from '@mui/material';
+
+import PeopleIcon from '@mui/icons-material/People';
+import AssignmentIcon from '@mui/icons-material/Assignment';
+import ScienceIcon from '@mui/icons-material/Science';
+import ImageSearchIcon from '@mui/icons-material/ImageSearch';
+import RefreshIcon from '@mui/icons-material/Refresh';
+import EventNoteIcon from '@mui/icons-material/EventNote';
+
+import { useAuth } from '../auth/AuthContext';
+import {
+  appointmentsApi,
+  type Appointment,
+  type AppointmentStatus,
+} from '../api/appointments.api';
+
+const TIME_ZONE = 'Africa/Addis_Ababa';
+
+const modules = [
+  { title: 'Patients', icon: <PeopleIcon color="primary" /> },
+  { title: 'Encounters', icon: <AssignmentIcon color="primary" /> },
+  { title: 'Laboratory', icon: <ScienceIcon color="primary" /> },
+  { title: 'Radiology', icon: <ImageSearchIcon color="primary" /> },
+];
+
+function getEthiopiaDate(): string {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date());
+
+  const value = (type: string) =>
+    parts.find((part) => part.type === type)?.value ?? '';
+
+  return `${value('year')}-${value('month')}-${value('day')}`;
+}
+
+function formatTime(value: string): string {
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: TIME_ZONE,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  }).format(new Date(value));
+}
+
+
+export default function DashboardPage() {
+  const { user } = useAuth();
+
+  const canReadAppointments =
+    user?.permissions.includes('appointment.read') ?? false;
+
+  const [appointments, setAppointments] =
+    useState<Appointment[]>([]);
+
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const [today, setToday] = useState(getEthiopiaDate);
+
+  const loadToday = useCallback(async () => {
+    if (!canReadAppointments) return;
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const clinicDate = getEthiopiaDate();
+
+      const result = await appointmentsApi.list({
+        dateFrom: `${clinicDate}T00:00:00+03:00`,
+        dateTo: `${clinicDate}T23:59:59.999+03:00`,
+      });
+
+      setToday(clinicDate);
+      setAppointments(result);
+    } catch {
+      setError('Unable to load today’s appointments.');
+      setAppointments([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [canReadAppointments]);
+
+  useEffect(() => {
+    void loadToday();
+  }, [loadToday]);
+
+  const countStatus = (status: AppointmentStatus) =>
+    appointments.filter((item) => item.status === status).length;
+
+  const sortedAppointments = [...appointments].sort(
+    (a, b) =>
+      new Date(a.scheduledStart).getTime() -
+      new Date(b.scheduledStart).getTime(),
+  );
+
+  return (
+    <Box>
+      <Typography variant="h4" sx={{ fontWeight: 700, mb: 1 }}>
+        Welcome, {user?.firstName || user?.username}
+      </Typography>
+
+      <Typography color="text.secondary" sx={{ mb: 3 }}>
+        Patient Information Management System
+      </Typography>
+
+      <Alert severity="success" sx={{ mb: 3 }}>
+        You have successfully signed in to PIMS.
+      </Alert>
+
+      <Grid container spacing={3}>
+        {modules.map((module) => (
+          <Grid key={module.title} size={{ xs: 12, sm: 6, lg: 3 }}>
+            <Card sx={{ borderRadius: 3, height: '100%' }}>
+              <CardContent sx={{ p: 3 }}>
+                {module.icon}
+                <Typography variant="h6" sx={{ mt: 2 }}>
+                  {module.title}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Module interface coming next
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+        ))}
+      </Grid>
+
+      {canReadAppointments && (
+        <Card sx={{ mt: 3, borderRadius: 3 }}>
+          <CardContent>
+            <Stack
+              direction={{ xs: 'column', sm: 'row' }}
+              spacing={2}
+              sx={{
+                mb: 3,
+                justifyContent: 'space-between',
+                alignItems: {
+                  xs: 'flex-start',
+                  sm: 'center',
+                },
+              }}
+            >
+              <Box>
+                <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                  Today's Appointments
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {today} · Ethiopia local time
+                </Typography>
+              </Box>
+
+              <Button
+                variant="outlined"
+                startIcon={<RefreshIcon />}
+                onClick={() => void loadToday()}
+                disabled={loading}
+              >
+                Refresh
+              </Button>
+            </Stack>
+
+            {error && (
+              <Alert severity="error" sx={{ mb: 2 }}>
+                {error}
+              </Alert>
+            )}
+
+            {loading ? (
+              <Box sx={{ textAlign: 'center', py: 4 }}>
+                <CircularProgress />
+              </Box>
+            ) : !error ? (
+              <>
+                <Grid container spacing={2} sx={{ mb: 3 }}>
+                  {[
+                    { label: 'Total', count: appointments.length },
+                    { label: 'Scheduled', count: countStatus('SCHEDULED') },
+                    { label: 'Confirmed', count: countStatus('CONFIRMED') },
+                    { label: 'Checked In', count: countStatus('CHECKED_IN') },
+                    { label: 'Completed', count: countStatus('COMPLETED') },
+                    {
+                      label: 'Cancelled / No Show',
+                      count:
+                        countStatus('CANCELLED') +
+                        countStatus('NO_SHOW'),
+                    },
+                  ].map((item) => (
+                    <Grid
+                      key={item.label}
+                      size={{ xs: 6, sm: 4, lg: 2 }}
+                    >
+                      <Card variant="outlined" sx={{ height: '100%' }}>
+                        <CardContent>
+                          <Typography
+                            variant="body2"
+                            color="text.secondary"
+                          >
+                            {item.label}
+                          </Typography>
+                          <Typography variant="h4" sx={{ mt: 1 }}>
+                            {item.count}
+                          </Typography>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                  ))}
+                </Grid>
+
+                <Typography
+                  variant="subtitle1"
+                  sx={{ fontWeight: 600, mb: 2 }}
+                >
+                  Daily Appointment Schedule
+                </Typography>
+
+                {sortedAppointments.length === 0 ? (
+                  <Stack
+                    spacing={1}
+                    sx={{
+                      py: 3,
+                      alignItems: 'center',
+                    }}
+                  >
+                    <EventNoteIcon
+                      color="disabled"
+                      sx={{ fontSize: 42 }}
+                    />
+                    <Typography color="text.secondary">
+                      No appointments scheduled for today.
+                    </Typography>
+                  </Stack>
+                ) : (
+                  <Stack spacing={1}>
+                    {sortedAppointments.map((appointment) => (
+                      <Stack
+                        key={appointment.id}
+                        direction={{ xs: 'column', sm: 'row' }}
+                        spacing={1}
+                        sx={{
+                          p: 2,
+                          border: '1px solid',
+                          borderColor: 'divider',
+                          borderRadius: 2,
+                          justifyContent: 'space-between',
+                          alignItems: {
+                            xs: 'flex-start',
+                            sm: 'center',
+                          },
+                        }}
+                      >
+                        <Box>
+                          <Typography sx={{ fontWeight: 600 }}>
+                            {appointment.appointmentNumber}
+                          </Typography>
+                          <Typography
+                            variant="body2"
+                            color="text.secondary"
+                          >
+                            {formatTime(appointment.scheduledStart)}
+                            {appointment.scheduledEnd
+                              ? ` - ${formatTime(appointment.scheduledEnd)}`
+                              : ''}
+                          </Typography>
+                        </Box>
+
+                        <Chip
+                          label={appointment.status.replaceAll('_', ' ')}
+                          color={
+                            appointment.status === 'COMPLETED' ||
+                            appointment.status === 'CHECKED_IN'
+                              ? 'success'
+                              : appointment.status === 'CANCELLED' ||
+                                  appointment.status === 'NO_SHOW'
+                                ? 'error'
+                                : appointment.status === 'CONFIRMED'
+                                  ? 'primary'
+                                  : 'warning'
+                          }
+                          size="small"
+                        />
+                      </Stack>
+                    ))}
+                  </Stack>
+                )}
+              </>
+            ) : null}
+          </CardContent>
+        </Card>
+      )}
+
+      <Card sx={{ mt: 3, borderRadius: 3 }}>
+        <CardContent>
+          <Typography variant="h6" sx={{ mb: 2 }}>
+            Your Access
+          </Typography>
+          <Typography>
+            Roles: {user?.roles.join(', ') || 'None'}
+          </Typography>
+          <Typography sx={{ mt: 1 }}>
+            Permissions: {user?.permissions.length ?? 0}
+          </Typography>
+        </CardContent>
+      </Card>
+    </Box>
+  );
+}
