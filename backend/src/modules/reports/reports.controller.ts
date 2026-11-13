@@ -12,6 +12,7 @@ import type { Response } from 'express';
 import { ReportsService } from './reports.service.js';
 
 import { HealthReportQueryDto } from './dto/health-report-query.dto.js';
+import { AppointmentSummaryQueryDto } from './dto/appointment-summary-query.dto.js';
 
 import { generateHealthReportCsv } from './utils/health-report-csv.js';
 
@@ -136,5 +137,16 @@ export class ReportsController {
     );
 
     response.end(pdf);
+  }
+  @Get('appointments/summary')
+  @RequirePermissions('report.read')
+  getAppointmentSummary(
+    @Query() query: AppointmentSummaryQueryDto,
+    @CurrentUser() user: JwtUser,
+  ) {
+    return this.reportsService.getAppointmentSummary(
+      query,
+      user.userId,
+    );
   }
 }

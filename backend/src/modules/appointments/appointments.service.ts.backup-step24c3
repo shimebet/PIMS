@@ -1,0 +1,602 @@
+﻿import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+
+import { PrismaService } from '../../database/prisma/prisma.service.js';
+import { AuditService } from '../audit/audit.service.js';
+
+import type { RequestContext } from '../../common/types/request-context.type.js';
+
+import { CreateAppointmentDto } from './dto/create-appointment.dto.js';
+import { QueryAppointmentsDto } from './dto/query-appointments.dto.js';
+import { UpdateAppointmentStatusDto } from './dto/update-appointment-status.dto.js';
+
+const ACTIVE_BOOKING_STATUSES = [
+  'SCHEDULED',
+  'CONFIRMED',
+  'CHECKED_IN',
+];
+
+const STATUS_TRANSITIONS: Record<string, string[]> = {
+  SCHEDULED: ['CONFIRMED', 'CHECKED_IN', 'CANCELLED', 'NO_SHOW'],
+  CONFIRMED: ['CHECKED_IN', 'CANCELLED', 'NO_SHOW'],
+  CHECKED_IN: ['COMPLETED', 'CANCELLED'],
+  COMPLETED: [],
+  CANCELLED: [],
+  NO_SHOW: [],
+};
+
+@Injectable()
+export class AppointmentsService {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly auditService: AuditService,
+  ) {}
+
+  private async getAuthorizedFacility(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        status: true,
+        facilityId: true,
+      },
+    });
+
+    if (
+      !user ||
+      user.status !== 'ACTIVE' ||
+      !user.facilityId
+    ) {
+      throw new ForbiddenException(
+        'An active user assigned to a facility is required',
+      );
+    }
+
+    const facility = await this.prisma.facility.findUnique({
+      where: { id: user.facilityId },
+      select: {
+        id: true,
+        status: true,
+        timezone: true,
+      },
+    });
+
+    if (!facility || facility.status !== 'ACTIVE') {
+      throw new ForbiddenException(
+        'An active facility is required',
+      );
+    }
+
+    return facility;
+  }
+
+  private parseDateTime(value: string): Date {
+    if (
+      !/T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/i.test(value)
+    ) {
+      throw new BadRequestException(
+        'Appointment date-time must include an explicit timezone',
+      );
+    }
+
+    const date = new Date(value);
+
+    if (Number.isNaN(date.getTime())) {
+      throw new BadRequestException(
+        'Invalid appointment date-time',
+      );
+    }
+
+    return date;
+  }
+
+  private getSchedule(
+    startValue: string,
+    endValue?: string,
+  ) {
+    const start = this.parseDateTime(startValue);
+
+    const end = endValue
+      ? this.parseDateTime(endValue)
+      : new Date(start.getTime() + 30 * 60 * 1000);
+
+    if (end.getTime() <= start.getTime()) {
+      throw new BadRequestException(
+        'Appointment end must be after appointment start',
+      );
+    }
+
+    if (start.getTime() <= Date.now()) {
+      throw new BadRequestException(
+        'Appointment must be scheduled in the future',
+      );
+    }
+
+    return { start, end };
+  }
+
+  private async validateAssignment(
+    facilityId: string,
+    departmentId?: string,
+    practitionerId?: string,
+  ) {
+    if (departmentId) {
+      const department = await this.prisma.department.findFirst({
+        where: {
+          id: departmentId,
+          facilityId,
+          status: 'ACTIVE',
+        },
+        select: { id: true },
+      });
+
+      if (!department) {
+        throw new BadRequestException(
+          'Department is not active or does not belong to this facility',
+        );
+      }
+    }
+
+    if (practitionerId) {
+      const practitioner = await this.prisma.practitioner.findFirst({
+        where: {
+          id: practitionerId,
+          facilityId,
+          status: 'ACTIVE',
+        },
+        select: {
+          id: true,
+          departmentId: true,
+        },
+      });
+
+      if (!practitioner) {
+        throw new BadRequestException(
+          'Practitioner is not active or does not belong to this facility',
+        );
+      }
+
+      if (
+        departmentId &&
+        practitioner.departmentId &&
+        practitioner.departmentId !== departmentId
+      ) {
+        throw new BadRequestException(
+          'Practitioner belongs to a different department',
+        );
+      }
+    }
+  }
+
+  private async checkPractitionerConflict(
+    facilityId: string,
+    practitionerId: string | undefined,
+    start: Date,
+    end: Date,
+    excludeAppointmentId?: string,
+  ) {
+    if (!practitionerId) {
+      return;
+    }
+
+    const conflict = await this.prisma.appointment.findFirst({
+      where: {
+        facilityId,
+        practitionerId,
+        status: {
+          in: ACTIVE_BOOKING_STATUSES,
+        },
+        ...(excludeAppointmentId
+          ? { id: { not: excludeAppointmentId } }
+          : {}),
+        scheduledStart: {
+          lt: end,
+        },
+        OR: [
+          {
+            scheduledEnd: {
+              gt: start,
+            },
+          },
+          {
+            scheduledEnd: null,
+          },
+        ],
+      },
+      select: { id: true },
+    });
+
+    if (conflict) {
+      throw new ConflictException(
+        'Practitioner already has an appointment during this period',
+      );
+    }
+  }
+
+  async create(
+    dto: CreateAppointmentDto,
+    context: RequestContext,
+  ) {
+    const facility = await this.getAuthorizedFacility(
+      context.userId,
+    );
+
+    if (dto.facilityId !== facility.id) {
+      throw new ForbiddenException(
+        'Appointment facility does not match your assigned facility',
+      );
+    }
+
+    const patient = await this.prisma.patient.findUnique({
+      where: { id: dto.patientId },
+      select: {
+        id: true,
+        status: true,
+        deceased: true,
+      },
+    });
+
+    if (
+      !patient ||
+      patient.status !== 'ACTIVE' ||
+      patient.deceased
+    ) {
+      throw new BadRequestException(
+        'An active living patient is required',
+      );
+    }
+
+    await this.validateAssignment(
+      facility.id,
+      dto.departmentId,
+      dto.practitionerId,
+    );
+
+    const { start, end } = this.getSchedule(
+      dto.scheduledStart,
+      dto.scheduledEnd,
+    );
+
+    await this.checkPractitionerConflict(
+      facility.id,
+      dto.practitionerId,
+      start,
+      end,
+    );
+
+    const appointment = await this.prisma.$transaction(
+      async (tx) => {
+        const sequence = await tx.numberSequence.upsert({
+          where: {
+            sequenceKey: 'APPOINTMENT_NUMBER',
+          },
+          update: {
+            value: { increment: 1 },
+          },
+          create: {
+            sequenceKey: 'APPOINTMENT_NUMBER',
+            value: BigInt(1),
+          },
+        });
+
+        const appointmentNumber =
+          `A${sequence.value.toString().padStart(8, '0')}`;
+
+        return tx.appointment.create({
+          data: {
+            appointmentNumber,
+            patientId: dto.patientId,
+            facilityId: facility.id,
+            departmentId: dto.departmentId,
+            practitionerId: dto.practitionerId,
+            appointmentType: dto.appointmentType,
+            reason: dto.reason,
+            scheduledStart: start,
+            scheduledEnd: end,
+            notes: dto.notes,
+            status: 'SCHEDULED',
+            createdByUserId: context.userId,
+          },
+        });
+      },
+    );
+
+    await this.auditService.log({
+      userId: context.userId,
+      eventType: 'DATA_CREATE',
+      action: 'APPOINTMENT_CREATE',
+      resourceType: 'Appointment',
+      resourceId: appointment.id,
+      patientId: appointment.patientId,
+      ipAddress: context.ipAddress,
+      userAgent: context.userAgent,
+      requestId: context.requestId,
+    });
+
+    return appointment;
+  }
+
+  async findAll(
+    query: QueryAppointmentsDto,
+    context: RequestContext,
+  ) {
+    const facility = await this.getAuthorizedFacility(
+      context.userId,
+    );
+
+    const dateFrom = query.dateFrom
+      ? this.parseDateTime(query.dateFrom)
+      : undefined;
+
+    const dateTo = query.dateTo
+      ? this.parseDateTime(query.dateTo)
+      : undefined;
+
+    if (
+      dateFrom &&
+      dateTo &&
+      dateFrom.getTime() > dateTo.getTime()
+    ) {
+      throw new BadRequestException(
+        'dateFrom must not be later than dateTo',
+      );
+    }
+
+    return this.prisma.appointment.findMany({
+      where: {
+        facilityId: facility.id,
+        ...(query.patientId
+          ? { patientId: query.patientId }
+          : {}),
+        ...(query.practitionerId
+          ? { practitionerId: query.practitionerId }
+          : {}),
+        ...(query.departmentId
+          ? { departmentId: query.departmentId }
+          : {}),
+        ...(query.status
+          ? { status: query.status }
+          : {}),
+        ...(dateFrom || dateTo
+          ? {
+              scheduledStart: {
+                ...(dateFrom ? { gte: dateFrom } : {}),
+                ...(dateTo ? { lte: dateTo } : {}),
+              },
+            }
+          : {}),
+      },
+      select: {
+        id: true,
+        appointmentNumber: true,
+        patientId: true,
+        facilityId: true,
+        departmentId: true,
+        practitionerId: true,
+        appointmentType: true,
+        reason: true,
+        scheduledStart: true,
+        scheduledEnd: true,
+        status: true,
+        createdAt: true,
+      },
+      orderBy: {
+        scheduledStart: 'asc',
+      },
+      take: 100,
+    });
+  }
+
+  async findOne(
+    id: string,
+    context: RequestContext,
+  ) {
+    const facility = await this.getAuthorizedFacility(
+      context.userId,
+    );
+
+    const appointment = await this.prisma.appointment.findFirst({
+      where: {
+        id,
+        facilityId: facility.id,
+      },
+    });
+
+    if (!appointment) {
+      throw new NotFoundException(
+        'Appointment not found',
+      );
+    }
+
+    await this.auditService.log({
+      userId: context.userId,
+      eventType: 'DATA_READ',
+      action: 'APPOINTMENT_READ',
+      resourceType: 'Appointment',
+      resourceId: appointment.id,
+      patientId: appointment.patientId,
+      ipAddress: context.ipAddress,
+      userAgent: context.userAgent,
+      requestId: context.requestId,
+    });
+
+    return appointment;
+  }
+
+  async updateStatus(
+    id: string,
+    dto: UpdateAppointmentStatusDto,
+    context: RequestContext,
+  ) {
+    const facility = await this.getAuthorizedFacility(
+      context.userId,
+    );
+
+    const appointment = await this.prisma.appointment.findFirst({
+      where: {
+        id,
+        facilityId: facility.id,
+      },
+    });
+
+    if (!appointment) {
+      throw new NotFoundException(
+        'Appointment not found',
+      );
+    }
+
+    const allowed =
+      STATUS_TRANSITIONS[appointment.status] ?? [];
+
+    if (!allowed.includes(dto.status)) {
+      throw new BadRequestException(
+        `Cannot change appointment from ${appointment.status} to ${dto.status}`,
+      );
+    }
+
+    const result = await this.prisma.appointment.updateMany({
+      where: {
+        id,
+        facilityId: facility.id,
+        status: appointment.status,
+      },
+      data: {
+        status: dto.status,
+      },
+    });
+
+    if (result.count !== 1) {
+      throw new ConflictException(
+        'Appointment was modified by another request',
+      );
+    }
+
+    const updated = await this.prisma.appointment.findFirstOrThrow({
+      where: {
+        id,
+        facilityId: facility.id,
+      },
+    });
+
+    await this.auditService.log({
+      userId: context.userId,
+      eventType: 'DATA_UPDATE',
+      action: 'APPOINTMENT_STATUS_UPDATE',
+      resourceType: 'Appointment',
+      resourceId: id,
+      patientId: appointment.patientId,
+      oldValues: {
+        status: appointment.status,
+      },
+      newValues: {
+        status: updated.status,
+        ...(dto.reason ? { reason: dto.reason } : {}),
+      },
+      ipAddress: context.ipAddress,
+      userAgent: context.userAgent,
+      requestId: context.requestId,
+    });
+
+    return updated;
+  }
+
+  async reschedule(
+    id: string,
+    scheduledStart: string,
+    scheduledEnd: string | undefined,
+    context: RequestContext,
+  ) {
+    const facility = await this.getAuthorizedFacility(
+      context.userId,
+    );
+
+    const appointment = await this.prisma.appointment.findFirst({
+      where: {
+        id,
+        facilityId: facility.id,
+      },
+    });
+
+    if (!appointment) {
+      throw new NotFoundException(
+        'Appointment not found',
+      );
+    }
+
+    if (
+      !['SCHEDULED', 'CONFIRMED'].includes(
+        appointment.status,
+      )
+    ) {
+      throw new BadRequestException(
+        'Only scheduled or confirmed appointments can be rescheduled',
+      );
+    }
+
+    const { start, end } = this.getSchedule(
+      scheduledStart,
+      scheduledEnd,
+    );
+
+    await this.checkPractitionerConflict(
+      facility.id,
+      appointment.practitionerId ?? undefined,
+      start,
+      end,
+      id,
+    );
+
+    const result = await this.prisma.appointment.updateMany({
+      where: {
+        id,
+        facilityId: facility.id,
+        status: appointment.status,
+        scheduledStart: appointment.scheduledStart,
+      },
+      data: {
+        scheduledStart: start,
+        scheduledEnd: end,
+      },
+    });
+
+    if (result.count !== 1) {
+      throw new ConflictException(
+        'Appointment was modified by another request',
+      );
+    }
+
+    const updated = await this.prisma.appointment.findFirstOrThrow({
+      where: {
+        id,
+        facilityId: facility.id,
+      },
+    });
+
+    await this.auditService.log({
+      userId: context.userId,
+      eventType: 'DATA_UPDATE',
+      action: 'APPOINTMENT_RESCHEDULE',
+      resourceType: 'Appointment',
+      resourceId: id,
+      patientId: appointment.patientId,
+      oldValues: {
+        scheduledStart: appointment.scheduledStart,
+        scheduledEnd: appointment.scheduledEnd,
+      },
+      newValues: {
+        scheduledStart: updated.scheduledStart,
+        scheduledEnd: updated.scheduledEnd,
+      },
+      ipAddress: context.ipAddress,
+      userAgent: context.userAgent,
+      requestId: context.requestId,
+    });
+
+    return updated;
+  }
+}

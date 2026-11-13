@@ -51,6 +51,9 @@ export class EncountersController {
       userId:
         user.userId,
 
+      facilityId:
+        user.facilityId,
+
       ipAddress:
         request.ip,
 
@@ -97,8 +100,17 @@ export class EncountersController {
   @RequirePermissions('encounter.read')
   findAll(
     @Query() query: QueryEncountersDto,
+
+    @Req()
+    request: Request,
+
+    @CurrentUser()
+    user: JwtUser,
   ) {
-    return this.encountersService.findAll(query);
+    return this.encountersService.findAll(
+      query,
+      this.getContext(request, user),
+    );
   }
 
   @Get(':id')
@@ -185,9 +197,16 @@ export class EncountersController {
   findVitals(
     @Param('id')
     id: string,
+
+    @Req()
+    request: Request,
+
+    @CurrentUser()
+    user: JwtUser,
   ) {
     return this.encountersService.findVitals(
       id,
+      this.getContext(request, user),
     );
   }
 
@@ -225,9 +244,16 @@ export class EncountersController {
   findDiagnoses(
     @Param('id')
     id: string,
+
+    @Req()
+    request: Request,
+
+    @CurrentUser()
+    user: JwtUser,
   ) {
     return this.encountersService.findDiagnoses(
       id,
+      this.getContext(request, user),
     );
   }
 }

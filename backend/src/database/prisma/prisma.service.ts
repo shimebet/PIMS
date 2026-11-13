@@ -21,6 +21,7 @@ export class PrismaService
       password: process.env.DATABASE_PASSWORD ?? '',
       database: process.env.DATABASE_NAME ?? 'pims',
       connectionLimit: 5,
+      allowPublicKeyRetrieval: true,
     });
 
     super({

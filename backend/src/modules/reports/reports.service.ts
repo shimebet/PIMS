@@ -1,5 +1,6 @@
 
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -8,6 +9,7 @@ import {
 import { PrismaService } from '../../database/prisma/prisma.service.js';
 
 import { HealthReportQueryDto } from './dto/health-report-query.dto.js';
+import { AppointmentSummaryQueryDto } from './dto/appointment-summary-query.dto.js';
 
 import { getReportDateRange } from './utils/report-date-range.js';
 
@@ -358,6 +360,148 @@ export class ReportsService {
       },
 
       notes,
+    };
+  }
+  async getAppointmentSummary(
+    query: AppointmentSummaryQueryDto,
+    userId: string,
+  ) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        status: true,
+        facilityId: true,
+      },
+    });
+
+    if (!user || user.status !== 'ACTIVE' || !user.facilityId) {
+      throw new ForbiddenException(
+        'An active user assigned to a facility is required',
+      );
+    }
+
+    const facility = await this.prisma.facility.findUnique({
+      where: { id: user.facilityId },
+      select: {
+        id: true,
+        code: true,
+        name: true,
+        status: true,
+        timezone: true,
+      },
+    });
+
+    if (!facility || facility.status !== 'ACTIVE') {
+      throw new ForbiddenException('An active facility is required');
+    }
+
+    if (facility.timezone !== 'Africa/Addis_Ababa') {
+      throw new ForbiddenException(
+        'Reporting currently supports Africa/Addis_Ababa timezone only',
+      );
+    }
+
+    const parseLocalDate = (value: string): Date => {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+        throw new BadRequestException('Date must use YYYY-MM-DD format');
+      }
+
+      const [year, month, day] = value.split('-').map(Number);
+
+      const check = new Date(Date.UTC(year, month - 1, day));
+
+      if (
+        check.getUTCFullYear() !== year ||
+        check.getUTCMonth() !== month - 1 ||
+        check.getUTCDate() !== day
+      ) {
+        throw new BadRequestException('Invalid reporting date');
+      }
+
+      return new Date(
+        Date.UTC(year, month - 1, day, -3),
+      );
+    };
+
+    const startDate = parseLocalDate(query.dateFrom);
+    const endDate = parseLocalDate(query.dateTo);
+
+    if (endDate.getTime() < startDate.getTime()) {
+      throw new BadRequestException(
+        'dateTo must be on or after dateFrom',
+      );
+    }
+
+    const endDateExclusive = new Date(
+      endDate.getTime() + 24 * 60 * 60 * 1000,
+    );
+
+    const where = {
+      facilityId: facility.id,
+      scheduledStart: {
+        gte: startDate,
+        lt: endDateExclusive,
+      },
+    };
+
+    const grouped = await this.prisma.appointment.groupBy({
+      by: ['status'],
+      where,
+      _count: {
+        _all: true,
+      },
+    });
+
+    const summary = {
+      total: 0,
+      scheduled: 0,
+      confirmed: 0,
+      checkedIn: 0,
+      completed: 0,
+      cancelled: 0,
+      noShow: 0,
+    };
+
+    for (const item of grouped) {
+      const count = item._count._all;
+      summary.total += count;
+
+      switch (item.status) {
+        case 'SCHEDULED':
+          summary.scheduled = count;
+          break;
+        case 'CONFIRMED':
+          summary.confirmed = count;
+          break;
+        case 'CHECKED_IN':
+          summary.checkedIn = count;
+          break;
+        case 'COMPLETED':
+          summary.completed = count;
+          break;
+        case 'CANCELLED':
+          summary.cancelled = count;
+          break;
+        case 'NO_SHOW':
+          summary.noShow = count;
+          break;
+      }
+    }
+
+    return {
+      reportType: 'APPOINTMENT_SUMMARY',
+      facility: {
+        id: facility.id,
+        code: facility.code,
+        name: facility.name,
+      },
+      period: {
+        dateFrom: query.dateFrom,
+        dateTo: query.dateTo,
+        timezone: facility.timezone,
+      },
+      generatedAt: new Date().toISOString(),
+      summary,
     };
   }
 }

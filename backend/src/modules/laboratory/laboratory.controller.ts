@@ -63,6 +63,8 @@ export class LaboratoryController {
       userId:
         user.userId,
 
+      facilityId: user.facilityId,
+
       ipAddress:
         request.ip,
 
@@ -143,9 +145,16 @@ export class LaboratoryController {
   findByPatient(
     @Param('patientId')
     patientId: string,
+
+    @Req()
+    request: Request,
+
+    @CurrentUser()
+    user: JwtUser,
   ) {
     return this.laboratoryService.findByPatient(
       patientId,
+      this.getContext(request, user),
     );
   }
 
@@ -179,6 +188,20 @@ export class LaboratoryController {
         request,
         user,
       ),
+    );
+  }
+  @Post('lab-orders/:orderId/items/:itemId/verify')
+  @RequirePermissions('lab.verify')
+  verifyResult(
+    @Param('orderId') orderId: string,
+    @Param('itemId') itemId: string,
+    @Req() request: Request,
+    @CurrentUser() user: JwtUser,
+  ) {
+    return this.laboratoryService.verifyResult(
+      orderId,
+      itemId,
+      this.getContext(request, user),
     );
   }
 }

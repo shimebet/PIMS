@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -24,7 +25,62 @@ export class EncountersService {
     private readonly auditService: AuditService,
   ) {}
 
-  async findAll(query: QueryEncountersDto) {
+  private async requireAuthorizedFacility(
+    context: RequestContext & {
+      facilityId?: string | null;
+    },
+  ): Promise<string> {
+    if (!context.facilityId) {
+      throw new ForbiddenException(
+        'An active facility assignment is required',
+      );
+    }
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: context.userId },
+      select: {
+        facilityId: true,
+        status: true,
+      },
+    });
+
+    if (
+      !user ||
+      user.status !== 'ACTIVE' ||
+      !user.facilityId ||
+      user.facilityId !== context.facilityId
+    ) {
+      throw new ForbiddenException(
+        'Encounter facility access denied',
+      );
+    }
+
+    const facility = await this.prisma.facility.findUnique({
+      where: { id: user.facilityId },
+      select: {
+        id: true,
+        status: true,
+      },
+    });
+
+    if (!facility || facility.status !== 'ACTIVE') {
+      throw new ForbiddenException(
+        'An active facility is required',
+      );
+    }
+
+    return user.facilityId;
+  }
+
+  async findAll(
+    query: QueryEncountersDto,
+    context: RequestContext & {
+      facilityId?: string | null;
+    },
+  ) {
+    const facilityId =
+      await this.requireAuthorizedFacility(context);
+
     const page = Math.max(1, query.page ?? 1);
 
     const limit = Math.min(
@@ -53,6 +109,8 @@ export class EncountersService {
     }
 
     const where = {
+      facilityId,
+
       ...(query.patientId
         ? { patientId: query.patientId }
         : {}),
@@ -144,8 +202,54 @@ export class EncountersService {
 
   async create(
     dto: CreateEncounterDto,
-    context: RequestContext,
+    context: RequestContext & {
+      facilityId?: string | null;
+    },
   ) {
+    if (!context.facilityId) {
+      throw new ForbiddenException(
+        'An active facility assignment is required',
+      );
+    }
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: context.userId },
+      select: {
+        facilityId: true,
+        status: true,
+      },
+    });
+
+    if (
+      !user ||
+      user.status !== 'ACTIVE' ||
+      !user.facilityId ||
+      user.facilityId !== context.facilityId ||
+      dto.facilityId !== user.facilityId
+    ) {
+      throw new ForbiddenException(
+        'Encounter facility access denied',
+      );
+    }
+
+    const assignedFacility =
+      await this.prisma.facility.findUnique({
+        where: { id: user.facilityId },
+        select: {
+          id: true,
+          status: true,
+        },
+      });
+
+    if (
+      !assignedFacility ||
+      assignedFacility.status !== 'ACTIVE'
+    ) {
+      throw new ForbiddenException(
+        'An active facility is required',
+      );
+    }
+
     const patient =
       await this.prisma.patient.findUnique({
         where: {
@@ -160,6 +264,12 @@ export class EncountersService {
     if (!patient) {
       throw new NotFoundException(
         'Patient not found',
+      );
+    }
+
+    if (patient.status !== 'ACTIVE') {
+      throw new BadRequestException(
+        'Cannot create an encounter for an inactive patient',
       );
     }
 
@@ -182,15 +292,17 @@ export class EncountersService {
 
     if (dto.practitionerId) {
       const practitioner =
-        await this.prisma.practitioner.findUnique({
+        await this.prisma.practitioner.findFirst({
           where: {
             id: dto.practitionerId,
+            facilityId: dto.facilityId,
+            status: 'ACTIVE',
           },
         });
 
       if (!practitioner) {
         throw new NotFoundException(
-          'Practitioner not found',
+          'Active practitioner not found in this facility',
         );
       }
     }
@@ -274,12 +386,18 @@ export class EncountersService {
 
   async findOne(
     id: string,
-    context?: RequestContext,
+    context: RequestContext & {
+      facilityId?: string | null;
+    },
   ) {
+    const facilityId =
+      await this.requireAuthorizedFacility(context);
+
     const encounter =
-      await this.prisma.encounter.findUnique({
+      await this.prisma.encounter.findFirst({
         where: {
           id,
+          facilityId,
         },
 
         include: {
@@ -327,42 +445,63 @@ export class EncountersService {
   async close(
     id: string,
     dto: CloseEncounterDto,
-    context: RequestContext,
+    context: RequestContext & {
+      facilityId?: string | null;
+    },
   ) {
-    const encounter =
-      await this.prisma.encounter.findUnique({
-        where: {
-          id,
-        },
-      });
+    const facilityId =
+      await this.requireAuthorizedFacility(context);
 
-    if (!encounter) {
-      throw new NotFoundException(
-        'Encounter not found',
-      );
-    }
+    const result = await this.prisma.$transaction(
+      async (tx) => {
+        await tx.$queryRaw`
+          SELECT id
+          FROM Encounter
+          WHERE id = ${id}
+            AND facilityId = ${facilityId}
+          FOR UPDATE
+        `;
 
-    if (encounter.status === 'COMPLETED') {
-      throw new BadRequestException(
-        'Encounter is already completed',
-      );
-    }
+        const encounter =
+          await tx.encounter.findFirst({
+            where: {
+              id,
+              facilityId,
+            },
+          });
 
-    const updated =
-      await this.prisma.encounter.update({
-        where: {
-          id,
-        },
+        if (!encounter) {
+          throw new NotFoundException(
+            'Encounter not found',
+          );
+        }
 
-        data: {
-          status: 'COMPLETED',
+        if (encounter.status !== 'IN_PROGRESS') {
+          throw new BadRequestException(
+            'Encounter is already completed',
+          );
+        }
 
-          endedAt:
-            dto.endedAt
-              ? new Date(dto.endedAt)
-              : new Date(),
-        },
-      });
+        const updated =
+          await tx.encounter.update({
+            where: {
+              id,
+              facilityId,
+            },
+            data: {
+              status: 'COMPLETED',
+              endedAt: dto.endedAt
+                ? new Date(dto.endedAt)
+                : new Date(),
+            },
+          });
+
+        return {
+          encounter,
+          updated,
+        };
+      },
+    );
 
     await this.auditService.log({
       userId: context.userId,
@@ -370,24 +509,29 @@ export class EncountersService {
       action: 'ENCOUNTER_CLOSE',
       resourceType: 'Encounter',
       resourceId: id,
-      patientId: encounter.patientId,
+      patientId: result.encounter.patientId,
       ipAddress: context.ipAddress,
       userAgent: context.userAgent,
       requestId: context.requestId,
     });
 
-    return updated;
+    return result.updated;
   }
-
   async createVitals(
     encounterId: string,
     dto: CreateVitalsDto,
-    context: RequestContext,
+    context: RequestContext & {
+      facilityId?: string | null;
+    },
   ) {
+    const facilityId =
+      await this.requireAuthorizedFacility(context);
+
     const encounter =
-      await this.prisma.encounter.findUnique({
+      await this.prisma.encounter.findFirst({
         where: {
           id: encounterId,
+          facilityId,
         },
       });
 
@@ -516,11 +660,40 @@ export class EncountersService {
       );
     }
 
-    const created =
-      await this.prisma.$transaction(
-        observations.map(
-          (observation) =>
-            this.prisma.observation.create({
+    const created = await this.prisma.$transaction(
+      async (tx) => {
+        await tx.$queryRaw`
+          SELECT id
+          FROM Encounter
+          WHERE id = ${encounterId}
+            AND facilityId = ${facilityId}
+          FOR UPDATE
+        `;
+
+        const lockedEncounter =
+          await tx.encounter.findFirst({
+            where: {
+              id: encounterId,
+              facilityId,
+            },
+          });
+
+        if (!lockedEncounter) {
+          throw new NotFoundException(
+            'Encounter not found',
+          );
+        }
+
+        if (lockedEncounter.status !== 'IN_PROGRESS') {
+          throw new BadRequestException(
+            'Cannot record vitals for a closed encounter',
+          );
+        }
+
+        return Promise.all(
+          observations.map(
+            (observation) =>
+              tx.observation.create({
               data: {
                 patientId:
                   encounter.patientId,
@@ -553,8 +726,10 @@ export class EncountersService {
                   new Date(),
               },
             }),
-        ),
-      );
+          ),
+        );
+      },
+    );
 
     await this.auditService.log({
       userId: context.userId,
@@ -580,11 +755,18 @@ export class EncountersService {
 
   async findVitals(
     encounterId: string,
+    context: RequestContext & {
+      facilityId?: string | null;
+    },
   ) {
+    const facilityId =
+      await this.requireAuthorizedFacility(context);
+
     const encounter =
-      await this.prisma.encounter.findUnique({
+      await this.prisma.encounter.findFirst({
         where: {
           id: encounterId,
+          facilityId,
         },
       });
 
@@ -609,12 +791,18 @@ export class EncountersService {
   async createDiagnosis(
     encounterId: string,
     dto: CreateDiagnosisDto,
-    context: RequestContext,
+    context: RequestContext & {
+      facilityId?: string | null;
+    },
   ) {
+    const facilityId =
+      await this.requireAuthorizedFacility(context);
+
     const encounter =
-      await this.prisma.encounter.findUnique({
+      await this.prisma.encounter.findFirst({
         where: {
           id: encounterId,
+          facilityId,
         },
       });
 
@@ -624,8 +812,60 @@ export class EncountersService {
       );
     }
 
-    const diagnosis =
-      await this.prisma.diagnosis.create({
+    if (encounter.status !== 'IN_PROGRESS') {
+      throw new BadRequestException(
+        'Cannot add a diagnosis to a closed encounter',
+      );
+    }
+
+    if (dto.practitionerId) {
+      const practitioner =
+        await this.prisma.practitioner.findFirst({
+          where: {
+            id: dto.practitionerId,
+            facilityId,
+            status: 'ACTIVE',
+          },
+        });
+
+      if (!practitioner) {
+        throw new NotFoundException(
+          'Active practitioner not found in this facility',
+        );
+      }
+    }
+
+    const diagnosis = await this.prisma.$transaction(
+      async (tx) => {
+        await tx.$queryRaw`
+          SELECT id
+          FROM Encounter
+          WHERE id = ${encounterId}
+            AND facilityId = ${facilityId}
+          FOR UPDATE
+        `;
+
+        const lockedEncounter =
+          await tx.encounter.findFirst({
+            where: {
+              id: encounterId,
+              facilityId,
+            },
+          });
+
+        if (!lockedEncounter) {
+          throw new NotFoundException(
+            'Encounter not found',
+          );
+        }
+
+        if (lockedEncounter.status !== 'IN_PROGRESS') {
+          throw new BadRequestException(
+            'Cannot add a diagnosis to a closed encounter',
+          );
+        }
+
+        return tx.diagnosis.create({
         data: {
           patientId:
             encounter.patientId,
@@ -656,8 +896,9 @@ export class EncountersService {
           status:
             'ACTIVE',
         },
-      });
-
+        });
+      },
+    );
     await this.auditService.log({
       userId: context.userId,
       eventType: 'DATA_CREATE',
@@ -675,7 +916,27 @@ export class EncountersService {
 
   async findDiagnoses(
     encounterId: string,
+    context: RequestContext & {
+      facilityId?: string | null;
+    },
   ) {
+    const facilityId =
+      await this.requireAuthorizedFacility(context);
+
+    const encounter =
+      await this.prisma.encounter.findFirst({
+        where: {
+          id: encounterId,
+          facilityId,
+        },
+      });
+
+    if (!encounter) {
+      throw new NotFoundException(
+        'Encounter not found',
+      );
+    }
+
     return this.prisma.diagnosis.findMany({
       where: {
         encounterId,

@@ -1,3 +1,4 @@
+﻿import { AppointmentsModule } from './modules/appointments/appointments.module.js';
 
 import {
   MiddlewareConsumer,
@@ -54,7 +55,8 @@ import { GeographicReferenceModule } from './modules/geographic-reference/geogra
     MedicationsModule,
     LaboratoryModule,
     RadiologyModule,
-    ReportsModule,
+    ReportsModule,
+    AppointmentsModule,
   ],
 
   controllers: [
@@ -74,3 +76,4 @@ export class AppModule implements NestModule {
       .forRoutes('*');
   }
 }
+

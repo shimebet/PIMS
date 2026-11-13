@@ -1,4 +1,5 @@
 import {
+  Equals,
   IsDateString,
   IsNumber,
   IsOptional,
@@ -35,8 +36,7 @@ export class CreateLabResultDto {
   abnormalFlag?: string;
 
   @IsOptional()
-  @IsString()
-  @MaxLength(50)
+  @Equals('PRELIMINARY')
   status?: string;
 
   @IsOptional()

@@ -126,6 +126,26 @@ async function main() {
 
   const permissions = [
     {
+      code: 'appointment.create',
+      name: 'Create Appointment',
+      module: 'APPOINTMENT',
+    },
+    {
+      code: 'appointment.read',
+      name: 'View Appointments',
+      module: 'APPOINTMENT',
+    },
+    {
+      code: 'appointment.update',
+      name: 'Update Appointment',
+      module: 'APPOINTMENT',
+    },
+    {
+      code: 'appointment.cancel',
+      name: 'Cancel Appointment',
+      module: 'APPOINTMENT',
+    },
+    {
       code: 'patient.create',
       name: 'Create Patient',
       module: 'PATIENT',
@@ -265,6 +285,11 @@ async function main() {
     {
       code: 'lab.read',
       name: 'View Laboratory Orders and Results',
+      module: 'LAB',
+    },
+    {
+      code: 'lab.verify',
+      name: 'Verify Laboratory Result',
       module: 'LAB',
     },
     {
