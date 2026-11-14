@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -21,11 +22,65 @@ export class RadiologyService {
     private readonly auditService: AuditService,
   ) {}
 
+  private async requireAuthorizedFacility(
+    context: RequestContext & {
+      facilityId?: string | null;
+    },
+  ): Promise<string> {
+    if (!context.facilityId) {
+      throw new ForbiddenException(
+        'An active facility assignment is required',
+      );
+    }
+
+    const user = await this.prisma.user.findUnique({
+      where: {
+        id: context.userId,
+      },
+      select: {
+        facilityId: true,
+        status: true,
+      },
+    });
+
+    if (
+      !user ||
+      user.status !== 'ACTIVE' ||
+      !user.facilityId ||
+      user.facilityId !== context.facilityId
+    ) {
+      throw new ForbiddenException(
+        'Radiology facility access denied',
+      );
+    }
+
+    const facility = await this.prisma.facility.findUnique({
+      where: {
+        id: user.facilityId,
+      },
+      select: {
+        id: true,
+        status: true,
+      },
+    });
+
+    if (!facility || facility.status !== 'ACTIVE') {
+      throw new ForbiddenException(
+        'An active facility is required',
+      );
+    }
+
+    return user.facilityId;
+  }
+
   async createOrder(
     encounterId: string,
     dto: CreateRadiologyOrderDto,
     context: RequestContext,
   ) {
+    const facilityId =
+      await this.requireAuthorizedFacility(context);
+
     const encounter =
       await this.prisma.encounter.findUnique({
         where: {
@@ -37,6 +92,10 @@ export class RadiologyService {
       throw new NotFoundException(
         'Encounter not found',
       );
+    }
+
+    if (encounter.facilityId !== facilityId) {
+      throw new NotFoundException('Encounter not found');
     }
 
     if (encounter.status !== 'IN_PROGRESS') {
@@ -57,6 +116,13 @@ export class RadiologyService {
         throw new NotFoundException(
           'Practitioner not found',
         );
+      }
+
+      if (
+        practitioner.facilityId !== facilityId ||
+        practitioner.status !== 'ACTIVE'
+      ) {
+        throw new NotFoundException('Practitioner not found');
       }
     }
 
@@ -180,12 +246,18 @@ export class RadiologyService {
 
   async findOne(
     id: string,
-    context?: RequestContext,
+    context: RequestContext,
   ) {
+    const facilityId =
+      await this.requireAuthorizedFacility(context);
+
     const order =
       await this.prisma.radiologyOrder.findUnique({
         where: {
           id,
+          encounter: {
+            facilityId,
+          },
         },
 
         include: {
@@ -262,7 +334,11 @@ export class RadiologyService {
 
   async findByPatient(
     patientId: string,
+  context: RequestContext,
   ) {
+    const facilityId =
+      await this.requireAuthorizedFacility(context);
+
     const patient =
       await this.prisma.patient.findUnique({
         where: {
@@ -283,6 +359,9 @@ export class RadiologyService {
     return this.prisma.radiologyOrder.findMany({
       where: {
         patientId,
+        encounter: {
+          facilityId,
+        },
       },
 
       include: {
@@ -314,10 +393,22 @@ export class RadiologyService {
     dto: CreateRadiologyResultDto,
     context: RequestContext,
   ) {
+    const facilityId =
+      await this.requireAuthorizedFacility(context);
+
+    if (dto.status !== undefined && dto.status !== 'FINAL') {
+      throw new BadRequestException(
+        'Radiology result status must be FINAL',
+      );
+    }
+
     const order =
       await this.prisma.radiologyOrder.findUnique({
         where: {
           id: orderId,
+          encounter: {
+            facilityId,
+          },
         },
 
         include: {
@@ -362,6 +453,13 @@ export class RadiologyService {
         throw new NotFoundException(
           'Reporting practitioner not found',
         );
+      }
+
+      if (
+        practitioner.facilityId !== facilityId ||
+        practitioner.status !== 'ACTIVE'
+      ) {
+        throw new NotFoundException('Practitioner not found');
       }
     }
 
@@ -410,9 +508,26 @@ export class RadiologyService {
 
           return created;
         },
-      );
+      ).catch((error: unknown) => {
+        if (
+          error !== null &&
+          typeof error === 'object' &&
+          'code' in error &&
+          error.code === 'P2002' &&
+          'meta' in error &&
+          error.meta !== null &&
+          typeof error.meta === 'object' &&
+          'target' in error.meta &&
+          Array.isArray(error.meta.target) &&
+          error.meta.target.includes('radiologyOrderId')
+        ) {
+          throw new BadRequestException(
+            'A radiology result already exists for this order',
+          );
+        }
 
-    await this.auditService.log({
+        throw error;
+      });    await this.auditService.log({
       userId:
         context.userId,
 

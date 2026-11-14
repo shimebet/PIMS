@@ -1,5 +1,6 @@
 
 import PDFDocument from 'pdfkit';
+import { drawHealthReportCharts } from './health-report-charts.js';
 import type { ReportsService } from '../reports.service.js';
 
 type HealthReport = Awaited<
@@ -295,6 +296,10 @@ doc
       y += rowHeight;
     });
 
+    drawHealthReportCharts(doc, report.indicators);
+    doc.addPage();
+    y = MARGIN;
+
     // Reporting notes
     y += 17;
 
@@ -407,32 +412,36 @@ doc
         },
       );
 
-    // Page numbering
+    // Page numbering: draw on existing buffered pages only.
     const pageRange = doc.bufferedPageRange();
 
-    for (
-      let page = 0;
-      page < pageRange.count;
-      page++
-    ) {
+    for (let page = 0; page < pageRange.count; page++) {
       doc.switchToPage(page);
+
+      const footer = `PIMS Health Office Report | Page ${page + 1} of ${pageRange.count}`;
+
+      doc.save();
+
+      // Disable automatic page creation while drawing the footer.
+      const originalBottomMargin = doc.page.margins.bottom;
+      doc.page.margins.bottom = 0;
 
       doc
         .fillColor(GRAY)
         .font('Helvetica')
-        .fontSize(8)
-        .text(
-          `PIMS Health Office Report | Page ${page + 1} of ${pageRange.count}`,
-          MARGIN,
-          PAGE_HEIGHT - 35,
-          {
-            width: CONTENT_WIDTH,
-            align: 'center',
-            lineBreak: false,
-          },
-        );
-    }
+        .fontSize(8);
 
+      const footerWidth = doc.widthOfString(footer);
+      const footerX = (PAGE_WIDTH - footerWidth) / 2;
+
+      doc.text(footer, footerX, PAGE_HEIGHT - 35, {
+        lineBreak: false,
+        width: footerWidth + 2,
+      });
+
+      doc.page.margins.bottom = originalBottomMargin;
+      doc.restore();
+    }
     doc.end();
   });
 }

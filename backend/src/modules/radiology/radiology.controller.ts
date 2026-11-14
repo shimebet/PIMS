@@ -63,6 +63,9 @@ export class RadiologyController {
       userId:
         user.userId,
 
+      facilityId:
+        user.facilityId,
+
       ipAddress:
         request.ip,
 
@@ -145,9 +148,16 @@ export class RadiologyController {
   findByPatient(
     @Param('patientId')
     patientId: string,
+
+    @Req()
+    request: Request,
+
+    @CurrentUser()
+    user: JwtUser,
   ) {
     return this.radiologyService.findByPatient(
       patientId,
+      this.getContext(request, user),
     );
   }
 

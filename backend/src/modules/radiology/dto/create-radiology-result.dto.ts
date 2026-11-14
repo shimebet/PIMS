@@ -4,6 +4,7 @@ import {
   IsString,
   IsUUID,
   MaxLength,
+  IsIn,
 } from 'class-validator';
 
 export class CreateRadiologyResultDto {
@@ -21,10 +22,9 @@ export class CreateRadiologyResultDto {
   @IsUUID()
   reportedByPractitionerId?: string;
 
-  @IsOptional()
-  @IsString()
-  @MaxLength(50)
-  status?: string;
+    @IsOptional()
+  @IsIn(['FINAL'])
+  status?: 'FINAL';
 
   @IsOptional()
   @IsDateString()
