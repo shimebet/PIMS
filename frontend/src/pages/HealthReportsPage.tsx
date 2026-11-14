@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import ClinicalCharts from '../components/dashboard/ClinicalCharts';
 
 import {
   Alert,
@@ -1153,6 +1154,10 @@ export default function HealthReportsPage() {
               </Stack>
             </CardContent>
           </Card>
+
+          <Box sx={{ mt: 3, mb: 3 }}>
+            <ClinicalCharts indicators={indicators} />
+          </Box>
         </>
       )}
     </Box>

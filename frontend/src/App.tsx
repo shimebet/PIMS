@@ -15,6 +15,7 @@ import DashboardPage from './pages/DashboardPage';
 import PatientsPage from './pages/PatientsPage';
 import AppointmentsPage from './pages/AppointmentsPage';
 import EncountersPage from './pages/EncountersPage';
+import ClinicalRecordsPage from './pages/ClinicalRecordsPage';
 import HealthReportsPage from './pages/HealthReportsPage';
 import AppointmentReportsPage from './pages/AppointmentReportsPage';
 import LaboratoryPage from './pages/LaboratoryPage';
@@ -136,8 +137,16 @@ export default function App() {
   }
 />
 
- {[
-  ['clinical', 'Clinical Records'],
+         <Route
+          path="/clinical"
+          element={
+            <ProtectedRoute>
+              <ClinicalRecordsPage />
+            </ProtectedRoute>
+          }
+        />
+{[
+  
   
 
   ['administration', 'Administration'],

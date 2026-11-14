@@ -1,0 +1,380 @@
+import { useEffect, useState } from 'react';
+import {
+  Alert,
+  Box,
+  Button,
+  Card,
+  CardContent,
+  Chip,
+  CircularProgress,
+  Divider,
+  Grid,
+  Stack,
+  TextField,
+  Typography,
+} from '@mui/material';
+
+import { patientsApi } from '../api/patients.api';
+import {
+  encountersApi,
+  type Encounter,
+  type VitalSignObservation,
+  type EncounterDiagnosis,
+} from '../api/encounters.api';
+
+import type { Patient } from '../types/patient';
+
+type PatientOption = Patient;
+
+function patientName(patient: PatientOption): string {
+  return [
+    patient.firstName,
+    patient.middleName,
+    patient.lastName,
+  ].filter(Boolean).join(' ');
+}
+
+function formatDate(value?: string | null): string {
+  if (!value) return 'Not recorded';
+
+  const date = new Date(value);
+
+  return Number.isNaN(date.getTime())
+    ? value
+    : date.toLocaleString();
+}
+
+export default function ClinicalRecordsPage() {
+  const [search, setSearch] = useState('');
+  const [patients, setPatients] = useState<PatientOption[]>([]);
+  const [selectedPatient, setSelectedPatient] =
+    useState<PatientOption | null>(null);
+
+  const [encounters, setEncounters] = useState<Encounter[]>([]);
+  const [selectedEncounter, setSelectedEncounter] =
+    useState<Encounter | null>(null);
+
+  const [vitals, setVitals] = useState<VitalSignObservation[]>([]);
+  const [diagnoses, setDiagnoses] = useState<EncounterDiagnosis[]>([]);
+
+  const [loadingPatients, setLoadingPatients] = useState(false);
+  const [loadingEncounters, setLoadingEncounters] = useState(false);
+  const [loadingDetails, setLoadingDetails] = useState(false);
+  const [error, setError] = useState('');
+
+  async function loadPatients() {
+    setLoadingPatients(true);
+    setError('');
+
+    try {
+      const response = await patientsApi.list({
+        page: 1,
+        limit: 50,
+      });
+
+      setPatients(response.items);
+    } catch {
+      setError('Unable to load patients.');
+    } finally {
+      setLoadingPatients(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadPatients();
+  }, []);
+
+  async function selectPatient(patient: PatientOption) {
+    setSelectedPatient(patient);
+    setSelectedEncounter(null);
+    setVitals([]);
+    setDiagnoses([]);
+    setEncounters([]);
+    setLoadingEncounters(true);
+    setError('');
+
+    try {
+      const response = await encountersApi.list({
+        patientId: patient.id,
+        page: 1,
+        limit: 100,
+      });
+
+      setEncounters(response.items);
+    } catch {
+      setError('Unable to load patient encounters.');
+    } finally {
+      setLoadingEncounters(false);
+    }
+  }
+
+  async function selectEncounter(encounter: Encounter) {
+    setSelectedEncounter(encounter);
+    setVitals([]);
+    setDiagnoses([]);
+    setLoadingDetails(true);
+    setError('');
+
+    try {
+      const [vitalResults, diagnosisResults] = await Promise.all([
+        encountersApi.getVitals(encounter.id),
+        encountersApi.getDiagnoses(encounter.id),
+      ]);
+
+      setVitals(vitalResults);
+      setDiagnoses(diagnosisResults);
+    } catch {
+      setError('Unable to load encounter clinical details.');
+    } finally {
+      setLoadingDetails(false);
+    }
+  }
+
+  const filteredPatients = patients.filter((patient) => {
+    const term = search.trim().toLowerCase();
+
+    if (!term) return true;
+
+    return (
+      patientName(patient).toLowerCase().includes(term) ||
+      String(patient.patientNumber ?? '')
+        .toLowerCase()
+        .includes(term)
+    );
+  });
+
+  return (
+    <Box sx={{ p: { xs: 2, md: 3 } }}>
+      <Stack spacing={3}>
+        <Box>
+          <Typography variant="h4" sx={{ fontWeight: 700 }}>
+            Clinical Records
+          </Typography>
+          <Typography color="text.secondary">
+            Patient-centered clinical history and encounter records
+          </Typography>
+        </Box>
+
+        {error && <Alert severity="error">{error}</Alert>}
+
+        <Grid container spacing={3}>
+          <Grid size={{ xs: 12, md: 4 }}>
+            <Card variant="outlined">
+              <CardContent>
+                <Stack spacing={2}>
+                  <Typography variant="h6">
+                    Patient Search
+                  </Typography>
+
+                  <TextField
+                    fullWidth
+                    size="small"
+                    label="Search name or patient number"
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                  />
+
+                  <Button
+                    variant="outlined"
+                    onClick={() => void loadPatients()}
+                    disabled={loadingPatients}
+                  >
+                    Refresh Patients
+                  </Button>
+
+                  {loadingPatients && <CircularProgress size={24} />}
+
+                  <Stack spacing={1}>
+                    {filteredPatients.map((patient) => (
+                      <Button
+                        key={patient.id}
+                        variant={
+                          selectedPatient?.id === patient.id
+                            ? 'contained'
+                            : 'outlined'
+                        }
+                        onClick={() => void selectPatient(patient)}
+                        sx={{
+                          justifyContent: 'flex-start',
+                          textAlign: 'left',
+                        }}
+                      >
+                        {patientName(patient)}
+                        {' — '}
+                        {patient.patientNumber}
+                      </Button>
+                    ))}
+                  </Stack>
+
+                  {!loadingPatients && filteredPatients.length === 0 && (
+                    <Typography color="text.secondary">
+                      No matching patients found.
+                    </Typography>
+                  )}
+                </Stack>
+              </CardContent>
+            </Card>
+          </Grid>
+
+          <Grid size={{ xs: 12, md: 8 }}>
+            <Stack spacing={3}>
+              <Card variant="outlined">
+                <CardContent>
+                  <Typography variant="h6" gutterBottom>
+                    Patient Clinical Profile
+                  </Typography>
+
+                  {!selectedPatient ? (
+                    <Typography color="text.secondary">
+                      Select a patient to view clinical records.
+                    </Typography>
+                  ) : (
+                    <Stack spacing={1}>
+                      <Typography sx={{ fontWeight: 600 }}>
+                        {patientName(selectedPatient)}
+                      </Typography>
+
+                      <Typography>
+                        Patient Number: {selectedPatient.patientNumber}
+                      </Typography>
+
+                      <Typography>
+                        Gender: {selectedPatient.gender ?? 'Not recorded'}
+                      </Typography>
+
+                      <Typography>
+                        Date of Birth: {
+                          selectedPatient.dateOfBirth ?? 'Not recorded'
+                        }
+                      </Typography>
+                    </Stack>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card variant="outlined">
+                <CardContent>
+                  <Typography variant="h6" gutterBottom>
+                    Encounter History
+                  </Typography>
+
+                  {loadingEncounters && <CircularProgress size={24} />}
+
+                  {!loadingEncounters && selectedPatient &&
+                    encounters.length === 0 && (
+                      <Typography color="text.secondary">
+                        No encounters found for this patient.
+                      </Typography>
+                    )}
+
+                  <Stack spacing={1}>
+                    {encounters.map((encounter) => (
+                      <Button
+                        key={encounter.id}
+                        variant={
+                          selectedEncounter?.id === encounter.id
+                            ? 'contained'
+                            : 'outlined'
+                        }
+                        onClick={() => void selectEncounter(encounter)}
+                        sx={{ justifyContent: 'space-between' }}
+                      >
+                        <span>
+                          {encounter.encounterNumber}
+                          {' — '}
+                          {formatDate(encounter.startedAt)}
+                        </span>
+                        <Chip
+                          size="small"
+                          label={encounter.status}
+                          color="default"
+                        />
+                      </Button>
+                    ))}
+                  </Stack>
+                </CardContent>
+              </Card>
+
+              {selectedEncounter && (
+                <Card variant="outlined">
+                  <CardContent>
+                    <Stack spacing={2}>
+                      <Typography variant="h6">
+                        Encounter Clinical Details
+                      </Typography>
+
+                      <Typography>
+                        Chief Complaint: {
+                          selectedEncounter.chiefComplaint ??
+                          'Not recorded'
+                        }
+                      </Typography>
+
+                      <Divider />
+
+                      <Typography sx={{ fontWeight: 600 }}>
+                        Vital Signs
+                      </Typography>
+
+                      {loadingDetails && <CircularProgress size={24} />}
+
+                      {!loadingDetails && vitals.length === 0 && (
+                        <Typography color="text.secondary">
+                          No vital signs recorded.
+                        </Typography>
+                      )}
+
+                      {vitals.map((vital) => (
+                        <Box key={vital.id}>
+                          <Typography>
+                            {vital.name}: {
+                              vital.valueNumeric ?? 'Not recorded'
+                            } {vital.unit ?? ''}
+                          </Typography>
+                          <Typography
+                            variant="caption"
+                            color="text.secondary"
+                          >
+                            {formatDate(vital.observedAt)}
+                          </Typography>
+                        </Box>
+                      ))}
+
+                      <Divider />
+
+                      <Typography sx={{ fontWeight: 600 }}>
+                        Diagnoses
+                      </Typography>
+
+                      {!loadingDetails && diagnoses.length === 0 && (
+                        <Typography color="text.secondary">
+                          No diagnoses recorded.
+                        </Typography>
+                      )}
+
+                      {diagnoses.map((diagnosis) => (
+                        <Box key={diagnosis.id}>
+                          <Typography>
+                            {diagnosis.description}
+                          </Typography>
+                          <Typography
+                            variant="caption"
+                            color="text.secondary"
+                          >
+                            {diagnosis.code ?? 'No code'}
+                            {' — '}
+                            {diagnosis.status}
+                          </Typography>
+                        </Box>
+                      ))}
+                    </Stack>
+                  </CardContent>
+                </Card>
+              )}
+            </Stack>
+          </Grid>
+        </Grid>
+      </Stack>
+    </Box>
+  );
+}

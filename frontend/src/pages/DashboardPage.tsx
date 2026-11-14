@@ -20,6 +20,8 @@ import ImageSearchIcon from '@mui/icons-material/ImageSearch';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import EventNoteIcon from '@mui/icons-material/EventNote';
 
+import ClinicalOverview from '../components/dashboard/ClinicalOverview';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { patientsApi } from '../api/patients.api';
 import type { Patient } from '../types/patient';
@@ -35,10 +37,30 @@ import {
 const TIME_ZONE = 'Africa/Addis_Ababa';
 
 const modules = [
-  { title: 'Patients', icon: <PeopleIcon color="primary" /> },
-  { title: 'Encounters', icon: <AssignmentIcon color="primary" /> },
-  { title: 'Laboratory', icon: <ScienceIcon color="primary" /> },
-  { title: 'Radiology', icon: <ImageSearchIcon color="primary" /> },
+  {
+    title: 'Patients',
+    path: '/patients',
+    permission: 'patient.read',
+    icon: <PeopleIcon color="primary" />,
+  },
+  {
+    title: 'Encounters',
+    path: '/encounters',
+    permission: 'encounter.read',
+    icon: <AssignmentIcon color="primary" />,
+  },
+  {
+    title: 'Laboratory',
+    path: '/laboratory',
+    permission: 'lab.read',
+    icon: <ScienceIcon color="primary" />,
+  },
+  {
+    title: 'Radiology',
+    path: '/radiology',
+    permission: 'radiology.read',
+    icon: <ImageSearchIcon color="primary" />,
+  },
 ];
 
 function getEthiopiaDate(): string {
@@ -67,6 +89,9 @@ function formatTime(value: string): string {
 
 export default function DashboardPage() {
   const { user } = useAuth();
+  const navigate = useNavigate();
+
+  const canReadReports = user?.permissions.includes('report.read') ?? false;
 
   const canReadAppointments =
     user?.permissions.includes('appointment.read') ?? false;
@@ -102,6 +127,7 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [selectedDate, setSelectedDate] = useState(getEthiopiaDate);
+  const [clinicalRefreshKey, setClinicalRefreshKey] = useState(0);
 
   const [currentTime, setCurrentTime] = useState(() => Date.now());
 
@@ -281,23 +307,49 @@ export default function DashboardPage() {
       </Alert>
 
       <Grid container spacing={3}>
-        {modules.map((module) => (
-          <Grid key={module.title} size={{ xs: 12, sm: 6, lg: 3 }}>
-            <Card sx={{ borderRadius: 3, height: '100%' }}>
-              <CardContent sx={{ p: 3 }}>
-                {module.icon}
-                <Typography variant="h6" sx={{ mt: 2 }}>
-                  {module.title}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Module interface coming next
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-        ))}
-      </Grid>
+        {modules
+          .filter((module) =>
+            user?.permissions.includes(module.permission),
+          )
+          .map((module) => (
+            <Grid
+              key={module.title}
+              size={{ xs: 12, sm: 6, lg: 3 }}
+            >
+              <Card
+                sx={{
+                  borderRadius: 3,
+                  height: '100%',
+                  cursor: 'pointer',
+                  transition: 'transform 0.2s',
+                  '&:hover': {
+                    transform: 'translateY(-3px)',
+                    boxShadow: 4,
+                  },
+                }}
+              >
+                <CardContent sx={{ p: 3 }}>
+                  {module.icon}
 
+                  <Typography variant="h6" sx={{ mt: 2 }}>
+                    {module.title}
+                  </Typography>
+
+                  <Button
+                    variant="text"
+                    sx={{ mt: 1 }}
+                    onClick={() => navigate(module.path)}
+                  >
+                    Open Module
+                  </Button>
+                </CardContent>
+              </Card>
+            </Grid>
+          ))}
+      </Grid>
+      {canReadReports && (
+        <ClinicalOverview selectedDate={selectedDate} refreshKey={clinicalRefreshKey} />
+      )}
       {canReadAppointments && (
         <Card sx={{ mt: 3, borderRadius: 3 }}>
           <CardContent>
@@ -344,7 +396,10 @@ export default function DashboardPage() {
                 <Button
                   variant="outlined"
                   startIcon={<RefreshIcon />}
-                  onClick={() => void loadToday()}
+                  onClick={() => {
+                      void loadToday();
+                      setClinicalRefreshKey((value) => value + 1);
+                    }}
                   disabled={loading || !selectedDate}
                 >
                   Refresh
