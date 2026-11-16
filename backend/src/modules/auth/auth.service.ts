@@ -1,4 +1,5 @@
-import {
+﻿import {
+  ConflictException,
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -10,6 +11,8 @@ import argon2 from 'argon2';
 import { randomUUID } from 'node:crypto';
 
 import { PrismaService } from '../../database/prisma/prisma.service.js';
+import { UpdateProfileDto } from './dto/update-profile.dto.js';
+import { ChangePasswordDto } from './dto/change-password.dto.js';
 
 @Injectable()
 export class AuthService {
@@ -24,6 +27,266 @@ export class AuthService {
       ConfigService,
   ) {}
 
+  async changePassword(
+    userId: string,
+    dto: ChangePasswordDto,
+  ) {
+    if (dto.newPassword !== dto.confirmPassword) {
+      throw new UnauthorizedException(
+        'Password confirmation does not match',
+      );
+    }
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        status: true,
+        passwordHash: true,
+      },
+    });
+
+    if (!user || user.status !== 'ACTIVE') {
+      throw new UnauthorizedException('User is not active');
+    }
+
+    const currentPasswordValid = await argon2.verify(
+      user.passwordHash,
+      dto.currentPassword,
+    );
+
+    if (!currentPasswordValid) {
+      throw new UnauthorizedException(
+        'Current password is incorrect',
+      );
+    }
+
+    const passwordReused = await argon2.verify(
+      user.passwordHash,
+      dto.newPassword,
+    );
+
+    if (passwordReused) {
+      throw new ConflictException(
+        'New password must differ from current password',
+      );
+    }
+
+    const newPasswordHash = await argon2.hash(
+      dto.newPassword,
+    );
+
+    await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.user.updateMany({
+        where: {
+          id: userId,
+          status: 'ACTIVE',
+          passwordHash: user.passwordHash,
+        },
+        data: {
+          passwordHash: newPasswordHash,
+          mustChangePassword: false,
+          failedLoginAttempts: 0,
+          lockedUntil: null,
+        },
+      });
+
+      if (updated.count !== 1) {
+        throw new ConflictException(
+          'Password was changed concurrently. Please retry.',
+        );
+      }
+
+      await tx.session.updateMany({
+        where: {
+          userId,
+          revokedAt: null,
+        },
+        data: {
+          revokedAt: new Date(),
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          userId,
+          eventType: 'SECURITY',
+          action: 'USER_PASSWORD_CHANGE',
+          resourceType: 'User',
+          resourceId: userId,
+          success: true,
+        },
+      });
+    });
+
+    return {
+      message: 'Password changed successfully. Please sign in again.',
+    };
+  }
+  async getProfile(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        username: true,
+        firstName: true,
+        middleName: true,
+        lastName: true,
+        email: true,
+        phone: true,
+        facilityId: true,
+        departmentId: true,
+        status: true,
+      },
+    });
+
+    if (!user || user.status !== 'ACTIVE') {
+      throw new UnauthorizedException('User is not active');
+    }
+
+    return user;
+  }
+
+  async updateProfile(
+    userId: string,
+    dto: UpdateProfileDto,
+  ) {
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const existing = await tx.user.findUnique({
+          where: { id: userId },
+          select: {
+            id: true,
+            status: true,
+            username: true,
+            firstName: true,
+            middleName: true,
+            lastName: true,
+            email: true,
+            phone: true,
+            facilityId: true,
+            departmentId: true,
+          },
+        });
+
+        if (!existing || existing.status !== 'ACTIVE') {
+          throw new UnauthorizedException('User is not active');
+        }
+
+        const fields = [
+          'firstName',
+          'middleName',
+          'lastName',
+          'email',
+          'phone',
+        ] as const;
+
+        const data: {
+          firstName?: string;
+          middleName?: string | null;
+          lastName?: string;
+          email?: string | null;
+          phone?: string | null;
+        } = {};
+
+        const changedFields: string[] = [];
+
+        for (const field of fields) {
+          const submitted = dto[field];
+
+          if (submitted === undefined) {
+            continue;
+          }
+
+          const normalized =
+            (field === 'middleName' ||
+              field === 'email' ||
+              field === 'phone') &&
+            submitted === ''
+              ? null
+              : submitted;
+
+          if (normalized === existing[field]) {
+            continue;
+          }
+
+          if (field === 'firstName') {
+            data.firstName = submitted;
+          } else if (field === 'lastName') {
+            data.lastName = submitted;
+          } else if (field === 'middleName') {
+            data.middleName = normalized;
+          } else if (field === 'email') {
+            data.email = normalized;
+          } else {
+            data.phone = normalized;
+          }
+
+          changedFields.push(field);
+        }
+
+        if (changedFields.length === 0) {
+          return existing;
+        }
+
+        if (data.email !== undefined && data.email !== null) {
+          const duplicate = await tx.user.findFirst({
+            where: {
+              email: data.email,
+              NOT: { id: userId },
+            },
+            select: { id: true },
+          });
+
+          if (duplicate) {
+            throw new ConflictException('Email already exists');
+          }
+        }
+
+        const updated = await tx.user.update({
+          where: { id: userId },
+          data,
+          select: {
+            id: true,
+            username: true,
+            firstName: true,
+            middleName: true,
+            lastName: true,
+            email: true,
+            phone: true,
+            facilityId: true,
+            departmentId: true,
+            status: true,
+          },
+        });
+
+        await tx.auditLog.create({
+          data: {
+            userId,
+            eventType: 'SECURITY',
+            action: 'USER_PROFILE_UPDATE',
+            resourceType: 'User',
+            resourceId: userId,
+            newValues: { changedFields },
+            success: true,
+          },
+        });
+
+        return updated;
+      });
+    } catch (error: unknown) {
+      if (
+        error !== null &&
+        typeof error === 'object' &&
+        'code' in error &&
+        error.code === 'P2002'
+      ) {
+        throw new ConflictException('Email already exists');
+      }
+
+      throw error;
+    }
+  }
   async login(
     username: string,
     password: string,
@@ -111,7 +374,10 @@ export class AuthService {
       ),
     ];
 
+    const sessionId = randomUUID();
+
     const payload = {
+      sid: sessionId,
       sub: user.id,
       username: user.username,
       facilityId: user.facilityId,
@@ -161,7 +427,7 @@ export class AuthService {
         },
       );
 
-    const sessionId = randomUUID();
+
 
     const refreshToken = await this.jwtService.signAsync(
       {
@@ -217,6 +483,7 @@ export class AuthService {
           user.departmentId,
         roles,
         permissions,
+        mustChangePassword: user.mustChangePassword,
       },
     };
   }
@@ -415,6 +682,7 @@ export class AuthService {
 
     const accessToken = await this.jwtService.signAsync(
       {
+        sid: session.id,
         sub: user.id,
         username: user.username,
         facilityId: user.facilityId,
@@ -452,3 +720,4 @@ export class AuthService {
     };
   }
 }
+

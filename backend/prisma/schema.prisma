@@ -92,6 +92,7 @@ model User {
 
   passwordHash String
 
+  mustChangePassword Boolean @default(false)
   firstName  String
   middleName String?
   lastName   String

@@ -1,5 +1,6 @@
 
 import PDFDocument from 'pdfkit';
+import { readFileSync } from 'node:fs';
 import { drawHealthReportCharts } from './health-report-charts.js';
 import type { ReportsService } from '../reports.service.js';
 
@@ -11,6 +12,10 @@ type IndicatorRow = {
   label: string;
   value: number;
 };
+
+const REPORT_LOGO = readFileSync(
+  new URL('../../../../assets/branding/wan-offi-clinic-logo.png', import.meta.url),
+);
 
 const PAGE_WIDTH = 595.28;
 const PAGE_HEIGHT = 841.89;
@@ -50,8 +55,12 @@ export function generateHealthReportPdf(
     doc.on('end', () => {
       resolve(Buffer.concat(chunks));
     });
-
     // Header
+    doc.image(REPORT_LOGO, MARGIN, 34, {
+      fit: [68, 68],
+      align: 'center',
+      valign: 'center',
+    });
 // Ethiopian health facility reporting header
 doc
   .fillColor(GRAY)

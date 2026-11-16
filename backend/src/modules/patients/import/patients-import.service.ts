@@ -545,6 +545,7 @@ private getGeographicWarnings(row: CsvRow): string[] {
 
       const nameKey = [
         row.firstName.toLowerCase(),
+        row.middleName.toLowerCase(),
         row.lastName.toLowerCase(),
         row.dateOfBirth,
       ].join('|');

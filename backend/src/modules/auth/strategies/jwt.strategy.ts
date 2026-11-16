@@ -11,6 +11,7 @@ import type { JwtUser } from '../../../common/types/jwt-user.type.js';
 
 interface JwtPayload {
   sub: string;
+  sid: string;
   username: string;
   facilityId: string | null;
   roles: string[];
@@ -39,6 +40,26 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
   async validate(payload: JwtPayload): Promise<JwtUser> {
     if (!payload.sub || typeof payload.sub !== 'string') {
       throw new UnauthorizedException('Invalid access token');
+    }
+
+    if (
+      typeof payload.sid !== 'string' ||
+      !payload.sid
+    ) {
+      throw new UnauthorizedException('Invalid access session');
+    }
+
+    const session = await this.prisma.session.findUnique({
+      where: { id: payload.sid },
+    });
+
+    if (
+      !session ||
+      session.userId !== payload.sub ||
+      session.revokedAt !== null ||
+      session.expiresAt <= new Date()
+    ) {
+      throw new UnauthorizedException('Access session is invalid');
     }
 
     const user = await this.prisma.user.findUnique({
@@ -88,6 +109,8 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       facilityId: user.facilityId,
       roles,
       permissions,
+      mustChangePassword: user.mustChangePassword,
     };
   }
 }
+

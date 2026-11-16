@@ -1,5 +1,6 @@
 import {
   Body,
+  Patch,
   Controller,
   Get,
   Post,
@@ -10,6 +11,8 @@ import {
 import type { Request } from 'express';
 
 import { AuthService } from './auth.service.js';
+import { UpdateProfileDto } from './dto/update-profile.dto.js';
+import { ChangePasswordDto } from './dto/change-password.dto.js';
 
 import { LoginDto } from './dto/login.dto.js';
 
@@ -36,6 +39,36 @@ export class AuthController {
       AuthService,
   ) {}
 
+  @UseGuards(JwtAuthGuard)
+  @Get('profile')
+  getProfile(
+    @CurrentUser() user: JwtUser,
+  ) {
+    return this.authService.getProfile(user.userId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch('profile')
+  updateProfile(
+    @CurrentUser() user: JwtUser,
+    @Body() dto: UpdateProfileDto,
+  ) {
+    return this.authService.updateProfile(
+      user.userId,
+      dto,
+    );
+  }
+  @UseGuards(JwtAuthGuard)
+  @Post('change-password')
+  changePassword(
+    @CurrentUser() user: JwtUser,
+    @Body() dto: ChangePasswordDto,
+  ) {
+    return this.authService.changePassword(
+      user.userId,
+      dto,
+    );
+  }
   @Post('login')
   login(
     @Body()

@@ -5,6 +5,7 @@ import {
   IsUUID,
   MaxLength,
   MinLength,
+  Matches,
 } from 'class-validator';
 
 export class CreateUserDto {
@@ -28,16 +29,27 @@ export class CreateUserDto {
   password!: string;
 
   @IsString()
+  @MinLength(3)
   @MaxLength(100)
+  @Matches(/^(?=(?:[^\p{L}]*\p{L}){3})[\p{L}]+(?:[ '\-][\p{L}]+)*$/u, {
+    message: 'Name must contain at least 3 letters and no numbers',
+  })
   firstName!: string;
 
   @IsOptional()
   @IsString()
   @MaxLength(100)
+  @Matches(/^(?:|(?=(?:[^\p{L}]*\p{L}){3})[\p{L}]+(?:[ '\-][\p{L}]+)*)$/u, {
+    message: 'Middle name must contain at least 3 letters and no numbers',
+  })
   middleName?: string;
 
   @IsString()
+  @MinLength(3)
   @MaxLength(100)
+  @Matches(/^(?=(?:[^\p{L}]*\p{L}){3})[\p{L}]+(?:[ '\-][\p{L}]+)*$/u, {
+    message: 'Name must contain at least 3 letters and no numbers',
+  })
   lastName!: string;
 
   @IsOptional()

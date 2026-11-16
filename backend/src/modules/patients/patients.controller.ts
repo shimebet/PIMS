@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -87,11 +88,25 @@ export class PatientsController {
 
     @Query('limit')
     limit?: string,
+  
+    @Query('status')
+    status?: string,
   ) {
+    if (
+      status !== undefined &&
+      status !== 'ACTIVE' &&
+      status !== 'INACTIVE'
+    ) {
+      throw new BadRequestException(
+        'status must be ACTIVE or INACTIVE',
+      );
+    }
+
     return this.patientsService.findAll(
       search,
       page ? Number(page) : 1,
       limit ? Number(limit) : 20,
+      status,
     );
   }
 
@@ -125,6 +140,47 @@ export class PatientsController {
     );
   }
 
+  @Patch(':id/activate')
+  @RequirePermissions('patient.update')
+  activate(
+    @Param('id')
+    id: string,
+
+    @Req()
+    request: Request,
+
+    @CurrentUser()
+    user: JwtUser,
+  ) {
+    return this.patientsService.activate(
+      id,
+      this.getRequestContext(
+        request,
+        user,
+      ),
+    );
+  }
+  @Patch(':id/deactivate')
+  @RequirePermissions('patient.deactivate')
+  deactivate(
+    @Param('id')
+    id: string,
+
+    @Req()
+    request: Request,
+
+    @CurrentUser()
+    user: JwtUser,
+  ) {
+    return this.patientsService.deactivate(
+      id,
+      this.getRequestContext(
+        request,
+        user,
+      ),
+    );
+  }
+
   @Patch(':id')
   @RequirePermissions('patient.update')
   update(
@@ -147,6 +203,33 @@ export class PatientsController {
         request,
         user,
       ),
+    );
+  }
+
+  // ADMIN_PATIENT_SOFT_DELETE
+  @Post(':id/soft-delete')
+  @RequirePermissions('patient.delete')
+  softDelete(
+    @Param('id')
+    id: string,
+
+    @Body()
+    dto: {
+      reason: string;
+      confirmation: string;
+    },
+
+    @Req()
+    request: Request,
+
+    @CurrentUser()
+    user: JwtUser,
+  ) {
+    return this.patientsService.softDelete(
+      id,
+      dto.reason,
+      dto.confirmation,
+      this.getRequestContext(request, user),
     );
   }
 }

@@ -75,6 +75,14 @@ async function main() {
       name: 'Hospital Administrator',
     },
     {
+      code: 'OFFICE_MANAGER',
+      name: 'Office Manager',
+    },
+    {
+      code: 'OFFICE_EMPLOYEE',
+      name: 'Office Employee',
+    },
+    {
       code: 'DOCTOR',
       name: 'Doctor',
     },
@@ -161,8 +169,24 @@ async function main() {
       module: 'PATIENT',
     },
     {
+      code: 'patient.deactivate',
+      name: 'Deactivate Patient',
+      module: 'PATIENT',
+    },
+    {
       code: 'patient.merge',
       name: 'Merge Patient',
+      module: 'PATIENT',
+    },
+    // PATIENT_SOFT_DELETE_PERMISSIONS_P12I19E
+    {
+      code: 'patient.delete',
+      name: 'Soft Delete Patient',
+      module: 'PATIENT',
+    },
+    {
+      code: 'patient.restore',
+      name: 'Restore Soft Deleted Patient',
       module: 'PATIENT',
     },
 
@@ -410,6 +434,69 @@ async function main() {
       },
     });
   }
+
+  // Office Manager receives every registered PIMS permission.
+  const officeManagerRole =
+    await prisma.role.findUniqueOrThrow({
+      where: { code: 'OFFICE_MANAGER' },
+    });
+
+  // Office Employee starts with non-administrative office duties.
+  const officeEmployeeRole =
+    await prisma.role.findUniqueOrThrow({
+      where: { code: 'OFFICE_EMPLOYEE' },
+    });
+
+  const employeePermissionCodes = new Set([
+    'patient.create',
+    'patient.read',
+    'patient.update',
+    'appointment.create',
+    'appointment.read',
+    'appointment.update',
+    'appointment.cancel',
+  ]);
+
+  for (const permission of allPermissions) {
+      // Only SYSTEM_ADMIN receives these sensitive permissions.
+      if (
+        permission.code === 'patient.delete' ||
+        permission.code === 'patient.restore'
+      ) {
+        continue;
+      }
+    await prisma.rolePermission.upsert({
+      where: {
+        roleId_permissionId: {
+          roleId: officeManagerRole.id,
+          permissionId: permission.id,
+        },
+      },
+      update: {},
+      create: {
+        roleId: officeManagerRole.id,
+        permissionId: permission.id,
+      },
+    });
+
+    if (employeePermissionCodes.has(permission.code)) {
+      await prisma.rolePermission.upsert({
+        where: {
+          roleId_permissionId: {
+            roleId: officeEmployeeRole.id,
+            permissionId: permission.id,
+          },
+        },
+        update: {},
+        create: {
+          roleId: officeEmployeeRole.id,
+          permissionId: permission.id,
+        },
+      });
+    }
+  }
+
+  console.log('Office Manager and Office Employee roles configured.');
 
   const initialPassword =
     process.env.ADMIN_INITIAL_PASSWORD;

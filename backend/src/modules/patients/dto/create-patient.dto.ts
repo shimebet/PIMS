@@ -2,11 +2,14 @@ import {
   IsArray,
   IsBoolean,
   IsDateString,
+  IsNotEmpty,
   IsOptional,
   IsString,
   IsUUID,
+  Matches,
   MaxLength,
   ValidateNested,
+  MinLength,
 } from 'class-validator';
 
 import { Type } from 'class-transformer';
@@ -86,17 +89,30 @@ class PatientAddressDto {
 }
 
 export class CreatePatientDto {
+  @IsNotEmpty()
   @IsString()
+  @MinLength(3)
   @MaxLength(100)
+  @Matches(/^(?=(?:[^\p{L}]*\p{L}){3})[\p{L}]+(?:[ '\-][\p{L}]+)*$/u, {
+    message: 'Name must contain at least 3 letters and no numbers',
+  })
   firstName!: string;
 
   @IsOptional()
   @IsString()
   @MaxLength(100)
+  @Matches(/^(?:|(?=(?:[^\p{L}]*\p{L}){3})[\p{L}]+(?:[ '\-][\p{L}]+)*)$/u, {
+    message: 'Middle name must contain at least 3 letters and no numbers',
+  })
   middleName?: string;
 
+  @IsNotEmpty()
   @IsString()
+  @MinLength(3)
   @MaxLength(100)
+  @Matches(/^(?=(?:[^\p{L}]*\p{L}){3})[\p{L}]+(?:[ '\-][\p{L}]+)*$/u, {
+    message: 'Name must contain at least 3 letters and no numbers',
+  })
   lastName!: string;
 
   @IsOptional()
