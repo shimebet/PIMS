@@ -32,6 +32,7 @@ import {
   OCCUPATION_OPTIONS,
   IDENTIFIER_TYPE_OPTIONS,
 } from '../../data/patient-registration-options';
+import { validatePersonNames } from '../../utils/person-name-validation';
 
 import {
   patientsApi,
@@ -589,27 +590,21 @@ if (invalidWoreda) {
   return false;
 }
 
-    if (
-      !form.firstName.trim() ||
-      !form.lastName.trim()
-    ) {
-      setError(
-        'First name and last name are required.',
-      );
+    const nameErrors = validatePersonNames({
+      firstName: form.firstName,
+      middleName: form.middleName,
+      lastName: form.lastName,
+    });
+
+    const firstNameError =
+      nameErrors.firstName ??
+      nameErrors.middleName ??
+      nameErrors.lastName;
+
+    if (firstNameError) {
+      setError(firstNameError);
       return false;
     }
-
-    if (
-      form.firstName.trim().length > 100 ||
-      form.middleName.trim().length > 100 ||
-      form.lastName.trim().length > 100
-    ) {
-      setError(
-        'Patient names must not exceed 100 characters.',
-      );
-      return false;
-    }
-
     if (form.dateOfBirth) {
       const date = new Date(
         `${form.dateOfBirth}T00:00:00.000Z`,

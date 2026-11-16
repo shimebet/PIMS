@@ -1,4 +1,4 @@
-
+﻿
 export interface AuthUser {
   id: string;
   username: string;
@@ -9,6 +9,7 @@ export interface AuthUser {
   departmentId: string | null;
   roles: string[];
   permissions: string[];
+  mustChangePassword: boolean;
 }
 
 export interface LoginRequest {
@@ -28,3 +29,4 @@ export interface RefreshResponse {
   refreshToken: string;
   expiresIn: number;
 }
+

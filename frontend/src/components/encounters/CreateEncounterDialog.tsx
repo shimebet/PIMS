@@ -124,7 +124,7 @@ export default function CreateEncounterDialog({
       fullWidth
       maxWidth="md"
     >
-      <DialogTitle>Create Encounter</DialogTitle>
+      <DialogTitle>Start Patient Visit</DialogTitle>
 
       <DialogContent>
         <Stack spacing={3} sx={{ mt: 1 }}>
@@ -219,7 +219,7 @@ export default function CreateEncounterDialog({
           disabled={!canSubmit}
           onClick={() => void handleSubmit()}
         >
-          {saving ? 'Creating...' : 'Create Encounter'}
+          {saving ? 'Creating...' : 'Start Patient Visit'}
         </Button>
       </DialogActions>
     </Dialog>

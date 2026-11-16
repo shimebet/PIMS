@@ -11,6 +11,8 @@ import {
   Grid,
   Stack,
   TextField,
+  Tab,
+  Tabs,
   Typography,
 } from '@mui/material';
 
@@ -66,6 +68,7 @@ export default function ClinicalRecordsPage() {
   const encounterRequestId = useRef(0);
 
   const [search, setSearch] = useState('');
+  const [activeClinicalTab, setActiveClinicalTab] = useState(0);
   const [patients, setPatients] = useState<PatientOption[]>([]);
   const [selectedPatient, setSelectedPatient] =
     useState<PatientOption | null>(null);
@@ -84,10 +87,21 @@ export default function ClinicalRecordsPage() {
   const [loadingNotes, setLoadingNotes] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [clinicalWarnings, setClinicalWarnings] = useState<string[]>([]);
+  const allergyUnavailable = clinicalWarnings.includes(
+    'Allergy records could not be loaded.',
+  );
+  const medicationUnavailable = clinicalWarnings.includes(
+    'Medication history could not be loaded.',
+  );
+  const notesUnavailable = clinicalWarnings.includes(
+    'Clinical notes could not be loaded.',
+  );
 
   const [labOrders, setLabOrders] = useState<LaboratoryOrder[]>([]);
   const [radiologyOrders, setRadiologyOrders] = useState<RadiologyOrder[]>([]);
   const [diagnosticsLoading, setDiagnosticsLoading] = useState(false);
+  const [diagnosticScope, setDiagnosticScope] =
+    useState<'ALL' | 'ENCOUNTER'>('ALL');
   const [diagnosticsErrors, setDiagnosticsErrors] = useState<string[]>([]);
   const [loadingPatients, setLoadingPatients] = useState(false);
   const [loadingEncounters, setLoadingEncounters] = useState(false);
@@ -123,6 +137,7 @@ export default function ClinicalRecordsPage() {
     ++encounterRequestId.current;
 
     setSelectedPatient(patient);
+    setActiveClinicalTab(0);
     setSelectedEncounter(null);
 
     setEncounters([]);
@@ -135,6 +150,7 @@ export default function ClinicalRecordsPage() {
     setLabOrders([]);
     setRadiologyOrders([]);
     setDiagnosticsErrors([]);
+    setDiagnosticScope('ALL');
     setDiagnosticsLoading(true);
 
     setLoadingEncounters(true);
@@ -297,6 +313,20 @@ export default function ClinicalRecordsPage() {
     }
   }
 
+  const visibleLabOrders = labOrders.filter(
+    (order) =>
+      diagnosticScope === 'ALL' ||
+      (selectedEncounter !== null &&
+        order.encounterId === selectedEncounter.id),
+  );
+
+  const visibleRadiologyOrders = radiologyOrders.filter(
+    (order) =>
+      diagnosticScope === 'ALL' ||
+      (selectedEncounter !== null &&
+        order.encounterId === selectedEncounter.id),
+  );
+
   const filteredPatients = patients.filter((patient) => {
     const term = search.trim().toLowerCase();
 
@@ -402,24 +432,56 @@ export default function ClinicalRecordsPage() {
                       Select a patient to view clinical records.
                     </Typography>
                   ) : (
-                    <Stack spacing={1}>
-                      <Typography sx={{ fontWeight: 600 }}>
-                        {patientName(selectedPatient)}
-                      </Typography>
+                    <Stack spacing={2}>
+                      <Box>
+                        <Typography variant="h5" sx={{ fontWeight: 700 }}>
+                          {patientName(selectedPatient)}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          Patient clinical record
+                        </Typography>
+                      </Box>
 
-                      <Typography>
-                        Patient Number: {selectedPatient.patientNumber}
-                      </Typography>
+                      <Stack
+                        direction="row"
+                        spacing={1}
+                        sx={{ flexWrap: 'wrap', gap: 1 }}
+                      >
+                        <Chip
+                          label={`Patient ID: ${selectedPatient.patientNumber}`}
+                          variant="outlined"
+                        />
+                        <Chip
+                          label={`Gender: ${selectedPatient.gender ?? 'Not recorded'}`}
+                          variant="outlined"
+                        />
+                        <Chip
+                          label={`DOB: ${selectedPatient.dateOfBirth?.slice(0, 10) ?? 'Not recorded'}`}
+                          variant="outlined"
+                        />
+                      </Stack>
 
-                      <Typography>
-                        Gender: {selectedPatient.gender ?? 'Not recorded'}
-                      </Typography>
-
-                      <Typography>
-                        Date of Birth: {
-                          selectedPatient.dateOfBirth?.slice(0, 10) ?? 'Not recorded'
-                        }
-                      </Typography>
+                      {loadingHistory ? (
+                        <Alert severity="info">
+                          Checking available allergy records...
+                        </Alert>
+                      ) : allergyUnavailable ? (
+                        <Alert severity="warning">
+                          Allergy information is unavailable. Verify allergy
+                          status before making clinical decisions.
+                        </Alert>
+                      ) : allergies.length > 0 ? (
+                        <Alert severity="warning">
+                          {allergies.length} allergy record(s) available.
+                          Review the Allergies & Medications tab before
+                          prescribing or administering medication.
+                        </Alert>
+                      ) : (
+                        <Alert severity="info">
+                          No allergy records returned. This does not confirm
+                          that the patient has no known allergies.
+                        </Alert>
+                      )}
                     </Stack>
                   )}
                 </CardContent>
@@ -427,9 +489,7 @@ export default function ClinicalRecordsPage() {
 
               <Card variant="outlined">
                 <CardContent>
-                  <Typography variant="h6" gutterBottom>
-                    Encounter History
-                  </Typography>
+                  <Typography variant="h6" gutterBottom>Patient Visit History</Typography>
 
                   {loadingEncounters && <CircularProgress size={24} />}
 
@@ -470,6 +530,25 @@ export default function ClinicalRecordsPage() {
 
               {selectedPatient && (
                 <Card variant="outlined">
+                  <Tabs
+                    value={activeClinicalTab}
+                    onChange={(_event, value: number) =>
+                      setActiveClinicalTab(value)
+                    }
+                    variant="scrollable"
+                    scrollButtons="auto"
+                    aria-label="Clinical records navigation"
+                    sx={{ borderBottom: 1, borderColor: 'divider' }}
+                  >
+                    <Tab label="Clinical Overview" />
+                    <Tab label="Allergies & Medications" />
+                    <Tab label="Diagnostics" />
+                  </Tabs>
+                </Card>
+              )}
+
+              {selectedPatient && activeClinicalTab === 1 && (
+                <Card variant="outlined">
                   <CardContent>
                     <Stack spacing={2}>
                       <Typography variant="h6">
@@ -482,17 +561,47 @@ export default function ClinicalRecordsPage() {
                         Patient Allergies
                       </Typography>
 
-                      {!loadingHistory && allergies.length === 0 && (
+                      <Alert severity="info">
+                        Allergy records are historical clinical data.
+                        Confirm current allergy status with the patient
+                        and authorized clinical staff.
+                      </Alert>
+
+                      {!loadingHistory && !allergyUnavailable && allergies.length === 0 && (
                         <Typography color="text.secondary">
                           No allergy records returned. Allergy status is not confirmed.
                         </Typography>
                       )}
 
                       {allergies.map((allergy) => (
-                        <Box key={allergy.id}>
-                          <Typography sx={{ fontWeight: 600 }}>
-                            {allergy.substance}
-                          </Typography>
+                        <Box
+                          key={allergy.id}
+                          sx={{
+                            p: 2,
+                            border: 1,
+                            borderColor: 'divider',
+                            borderRadius: 2,
+                          }}
+                        >
+                          <Stack
+                            direction="row"
+                            spacing={1}
+                            sx={{
+                              alignItems: 'center',
+                              flexWrap: 'wrap',
+                              mb: 1,
+                            }}
+                          >
+                            <Typography sx={{ fontWeight: 600 }}>
+                              {allergy.substance}
+                            </Typography>
+                            <Chip
+                              size="small"
+                              color="warning"
+                              variant="outlined"
+                              label={allergy.severity ?? 'Severity not recorded'}
+                            />
+                          </Stack>
                           <Typography variant="body2">
                             Reaction: {allergy.reaction ?? 'Not recorded'}
                           </Typography>
@@ -501,6 +610,9 @@ export default function ClinicalRecordsPage() {
                           </Typography>
                           <Typography variant="body2">
                             Criticality: {allergy.criticality ?? 'Not recorded'}
+                          </Typography>
+                          <Typography variant="body2">
+                            Clinical status: {allergy.clinicalStatus ?? 'Not recorded'}
                           </Typography>
                         </Box>
                       ))}
@@ -511,7 +623,7 @@ export default function ClinicalRecordsPage() {
                         Medication History
                       </Typography>
 
-                      {!loadingHistory && medications.length === 0 && (
+                      {!loadingHistory && !medicationUnavailable && medications.length === 0 && (
                         <Typography color="text.secondary">
                           No medication orders returned.
                         </Typography>
@@ -545,7 +657,7 @@ export default function ClinicalRecordsPage() {
                 </Card>
               )}
 
-              {selectedPatient && (
+              {selectedPatient && activeClinicalTab === 2 && (
                 <Card variant="outlined">
                   <CardContent>
                     <Stack spacing={2}>
@@ -554,9 +666,26 @@ export default function ClinicalRecordsPage() {
                       </Typography>
 
                       <Typography variant="body2" color="text.secondary">
-                        Laboratory and radiology orders for this patient.
-                        Orders from the selected encounter appear first.
+                        Review laboratory and radiology orders for this patient
+                        or restrict the view to the selected encounter.
                       </Typography>
+
+                      <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap' }}>
+                        <Button
+                          size="small"
+                          variant={diagnosticScope === 'ALL' ? 'contained' : 'outlined'}
+                          onClick={() => setDiagnosticScope('ALL')}
+                        >
+                          All Patient Orders
+                        </Button>
+
+                        <Button
+                          size="small"
+                          variant={diagnosticScope === 'ENCOUNTER' ? 'contained' : 'outlined'}
+                          disabled={!selectedEncounter}
+                          onClick={() => setDiagnosticScope('ENCOUNTER')}
+                        >Selected Patient Visit</Button>
+                      </Stack>
 
                       {diagnosticsLoading && <CircularProgress size={24} />}
 
@@ -575,13 +704,13 @@ export default function ClinicalRecordsPage() {
                       {!diagnosticsLoading &&
                         !diagnosticsErrors.some((message) =>
                           message.startsWith('Laboratory')) &&
-                        labOrders.length === 0 && (
+                        visibleLabOrders.length === 0 && (
                           <Typography color="text.secondary">
                             No laboratory orders returned.
                           </Typography>
                         )}
 
-                      {[...labOrders]
+                      {[...visibleLabOrders]
                         .sort((a, b) =>
                           Number(b.encounterId === selectedEncounter?.id) -
                           Number(a.encounterId === selectedEncounter?.id))
@@ -645,6 +774,23 @@ export default function ClinicalRecordsPage() {
                                         Result status: {item.result.status}
                                       </Typography>
 
+                                      <Typography variant="body2">
+                                        Reference range: {
+                                          item.result.referenceRangeLow != null &&
+                                          item.result.referenceRangeHigh != null
+                                            ? `${item.result.referenceRangeLow} - ${item.result.referenceRangeHigh} ${item.result.unit ?? ''}`
+                                            : 'Not provided'
+                                        }
+                                      </Typography>
+
+                                      <Typography variant="body2">
+                                        Verification: {
+                                          item.result.verifiedAt
+                                            ? `Verified ${formatDate(item.result.verifiedAt)}`
+                                            : 'Not verified'
+                                        }
+                                      </Typography>
+
                                       {item.result.abnormalFlag && (
                                         <Chip
                                           size="small"
@@ -670,13 +816,13 @@ export default function ClinicalRecordsPage() {
                       {!diagnosticsLoading &&
                         !diagnosticsErrors.some((message) =>
                           message.startsWith('Radiology')) &&
-                        radiologyOrders.length === 0 && (
+                        visibleRadiologyOrders.length === 0 && (
                           <Typography color="text.secondary">
                             No radiology orders returned.
                           </Typography>
                         )}
 
-                      {[...radiologyOrders]
+                      {[...visibleRadiologyOrders]
                         .sort((a, b) =>
                           Number(b.encounterId === selectedEncounter?.id) -
                           Number(a.encounterId === selectedEncounter?.id))
@@ -748,13 +894,19 @@ export default function ClinicalRecordsPage() {
                   </CardContent>
                 </Card>
               )}
-              {selectedEncounter && (
+              {selectedPatient && !selectedEncounter &&
+                activeClinicalTab === 0 && (
+                  <Alert severity="info">
+                    Select an encounter above to review vital signs,
+                    diagnoses, and clinical notes.
+                  </Alert>
+                )}
+
+              {selectedEncounter && activeClinicalTab === 0 && (
                 <Card variant="outlined">
                   <CardContent>
                     <Stack spacing={2}>
-                      <Typography variant="h6">
-                        Encounter Clinical Details
-                      </Typography>
+                      <Typography variant="h6">Patient Visit Clinical Details</Typography>
 
                       <Typography>
                         Chief Complaint: {
@@ -829,7 +981,7 @@ export default function ClinicalRecordsPage() {
 
                       {loadingNotes && <CircularProgress size={24} />}
 
-                      {!loadingNotes && notes.length === 0 && (
+                      {!loadingNotes && !notesUnavailable && notes.length === 0 && (
                         <Typography color="text.secondary">
                           No clinical notes returned for this encounter.
                         </Typography>

@@ -1,7 +1,7 @@
 
 import { useState } from 'react';
 import type { FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 
 import {
@@ -16,12 +16,18 @@ import {
   Typography,
 } from '@mui/material';
 
-import LocalHospitalIcon from '@mui/icons-material/LocalHospital';
+
 
 import { useAuth } from '../auth/AuthContext';
 
 export default function LoginPage() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const successMessage =
+    typeof location.state?.message === 'string'
+      ? location.state.message
+      : '';
+
   const { login } = useAuth();
 
   const [username, setUsername] = useState('');
@@ -73,13 +79,19 @@ export default function LoginPage() {
         >
           <CardContent sx={{ p: 5 }}>
             <Box sx={{ textAlign: 'center', mb: 4 }}>
-              <LocalHospitalIcon
-                sx={{
-                  fontSize: 54,
-                  color: 'primary.main',
-                  mb: 1,
-                }}
-              />
+              <Box
+  component="img"
+  src="/branding/wan-offi-clinic-logo.png"
+  alt="Wan Offi Clinic"
+  sx={{
+    width: 210,
+    maxWidth: '100%',
+    height: 'auto',
+    display: 'block',
+    mx: 'auto',
+    mb: 2,
+  }}
+/>
 
               <Typography
                 variant="h4"
@@ -93,6 +105,11 @@ export default function LoginPage() {
               </Typography>
             </Box>
 
+            {successMessage && (
+              <Alert severity="success" sx={{ mb: 3 }}>
+                {successMessage}
+              </Alert>
+            )}
             {error && (
               <Alert severity="error" sx={{ mb: 3 }}>
                 {error}

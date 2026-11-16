@@ -316,9 +316,7 @@ export default function EncountersPage() {
             <Button
               variant="contained"
               onClick={() => setCreateDialogOpen(true)}
-            >
-              Create Encounter
-            </Button>
+            >Start Patient Visit</Button>
           )}
 
           <Button
@@ -352,14 +350,12 @@ export default function EncountersPage() {
             fullWidth
             size="small"
           >
-            <InputLabel id="encounter-status-label">
-              Encounter Status
-            </InputLabel>
+            <InputLabel id="encounter-status-label">Patient Visit Status</InputLabel>
 
             <Select
               labelId="encounter-status-label"
               value={status}
-              label="Encounter Status"
+              label="Patient Visit Status"
               onChange={(event) => {
                 setStatus(event.target.value);
                 setPage(0);
@@ -557,9 +553,7 @@ export default function EncountersPage() {
         fullWidth
         maxWidth="sm"
       >
-        <DialogTitle>
-          Encounter Details
-        </DialogTitle>
+        <DialogTitle>Patient Visit Details</DialogTitle>
 
         <DialogContent dividers>
           {detailsLoading && (

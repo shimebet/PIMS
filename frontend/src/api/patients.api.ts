@@ -1,4 +1,4 @@
-﻿
+
 import { api } from './client';
 
 import type {
@@ -11,6 +11,22 @@ import type {
    PATIENT REGISTRATION TYPES
 ============================================ */
 
+export interface UpdatePatientRequest {
+  phone?: string;
+  firstName?: string;
+  middleName?: string;
+  lastName?: string;
+  dateOfBirth?: string;
+  birthDateEstimated?: boolean;
+  sexAtBirth?: string;
+  gender?: string;
+  bloodGroup?: string;
+  maritalStatus?: string;
+  nationality?: string;
+  preferredLanguage?: string;
+  occupation?: string;
+  status?: string;
+}
 export interface CreatePatientIdentifier {
   identifierType: string;
   identifierValue: string;
@@ -211,6 +227,65 @@ export const patientsApi = {
     return response.data;
   },
 
+  /**
+   * PATCH /patients/:id
+   *
+   * Update supported patient information.
+   * Requires patient.update permission.
+   */
+  async update(
+    id: string,
+    data: UpdatePatientRequest,
+  ): Promise<Patient> {
+    const response = await api.patch<Patient>(
+      `/patients/${encodeURIComponent(id)}`,
+      data,
+    );
+
+    return response.data;
+  },
+  /**
+   * PATCH /patients/:id/deactivate
+   *
+   * Deactivate an active patient without deleting history.
+   * Requires patient.deactivate permission.
+   */
+  /**
+   * PATCH /patients/:id/activate
+   *
+   * Reactivate an inactive patient.
+   * Requires patient.update permission.
+   */
+  async activate(id: string): Promise<Patient> {
+    const response = await api.patch<Patient>(
+      `/patients/${encodeURIComponent(id)}/activate`,
+    );
+
+    return response.data;
+  },
+  /**
+   * POST /patients/:id/soft-delete
+   * Requires patient.delete permission.
+   */
+  async softDelete(
+    id: string,
+    reason: string,
+    confirmation: string,
+  ): Promise<unknown> {
+    const response = await api.post(
+      `/patients/${encodeURIComponent(id)}/soft-delete`,
+      { reason, confirmation },
+    );
+
+    return response.data;
+  },
+  async deactivate(id: string): Promise<Patient> {
+    const response = await api.patch<Patient>(
+      `/patients/${encodeURIComponent(id)}/deactivate`,
+    );
+
+    return response.data;
+  },
   /* ========================================
      OPTION 2: CSV BULK PATIENT REGISTRATION
   ======================================== */

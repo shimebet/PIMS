@@ -5,7 +5,7 @@ import type { ReactNode } from 'react';
 import {
   AppBar,
   Box,
-  Button,
+  Tooltip,
   Collapse,
   Divider,
   Drawer,
@@ -31,6 +31,8 @@ import AssessmentIcon from '@mui/icons-material/Assessment';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
+import AccountCircleIcon from '@mui/icons-material/AccountCircle';
+import LogoutIcon from '@mui/icons-material/Logout';
 
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
@@ -41,12 +43,13 @@ const navigation = [
   { label: 'Dashboard', path: '/dashboard', icon: <DashboardIcon /> },
   { label: 'Patients', path: '/patients', icon: <PeopleIcon /> },
   { label: 'Appointments', path: '/appointments', icon: <EventNoteIcon /> },
-  { label: 'Encounters', path: '/encounters', icon: <AssignmentIcon /> },
+  { label: 'Patient Visits', path: '/encounters', icon: <AssignmentIcon /> },
   { label: 'Clinical Records', path: '/clinical', icon: <MedicalServicesIcon /> },
   { label: 'Laboratory', path: '/laboratory', icon: <ScienceIcon /> },
   { label: 'Radiology', path: '/radiology', icon: <ImageSearchIcon /> },
   { label: 'Administration', path: '/administration', icon: <AdminPanelSettingsIcon /> },
   { label: 'Audit Logs', path: '/audit', icon: <HistoryIcon /> },
+  { label: 'My Profile', path: '/profile', icon: <AccountCircleIcon /> },
 ];
 
 export default function AppLayout({
@@ -82,14 +85,27 @@ export default function AppLayout({
 
   const drawerContent = (
     <Box>
-      <Box sx={{ px: 3, py: 3 }}>
-        <Typography variant="h5" sx={{ fontWeight: 700, color: 'primary.main' }}>
-          PIMS
-        </Typography>
-        <Typography variant="caption" color="text.secondary">
-          Patient Information Management System
-        </Typography>
-      </Box>
+      <Box sx={{ px: 2, py: 2.5, textAlign: 'center' }}>
+  <Box
+    component="img"
+    src="/branding/wan-offi-clinic-logo.png"
+    alt="Wan Offi Clinic"
+    sx={{
+      width: 165,
+      maxWidth: '100%',
+      height: 'auto',
+      display: 'block',
+      mx: 'auto',
+      mb: 1,
+    }}
+  />
+  <Typography
+    variant="subtitle1"
+    sx={{ fontWeight: 700, color: 'primary.main' }}
+  >
+    PIMS
+  </Typography>
+</Box>
 
       <Divider />
 
@@ -191,9 +207,15 @@ export default function AppLayout({
             {user?.firstName || user?.username}
           </Typography>
 
-          <Button variant="outlined" size="small" onClick={() => void handleLogout()}>
-            Logout
-          </Button>
+          <Tooltip title="Logout">
+            <IconButton
+              color="primary"
+              onClick={() => void handleLogout()}
+              aria-label="Logout"
+            >
+              <LogoutIcon />
+            </IconButton>
+          </Tooltip>
         </Toolbar>
       </AppBar>
 

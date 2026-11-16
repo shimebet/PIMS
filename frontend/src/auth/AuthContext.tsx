@@ -25,6 +25,7 @@ interface AuthContextValue {
   isAuthenticated: boolean;
   login: (credentials: LoginRequest) => Promise<void>;
   logout: () => Promise<void>;
+  clearSession: () => void;
 }
 
 const AuthContext = createContext<
@@ -57,6 +58,10 @@ export function AuthProvider({
     [],
   );
 
+  const clearSession = useCallback(() => {
+    clearTokens();
+    setUser(null);
+  }, []);
   const logout = useCallback(async () => {
     try {
       await authApi.logout();
@@ -72,8 +77,9 @@ export function AuthProvider({
       isAuthenticated: Boolean(user),
       login,
       logout,
+      clearSession,
     }),
-    [user, login, logout],
+    [user, login, logout, clearSession],
   );
 
   return (

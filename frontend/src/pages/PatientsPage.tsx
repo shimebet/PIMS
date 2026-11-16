@@ -1,4 +1,4 @@
-﻿
+
 import { useEffect, useState } from 'react';
 
 import {
@@ -12,7 +12,11 @@ import {
   DialogContent,
   DialogTitle,
   Divider,
+  FormControl,
+  InputLabel,
+  MenuItem,
   Paper,
+  Select,
   Stack,
   Table,
   TableBody,
@@ -34,6 +38,9 @@ import axios from 'axios';
 
 import { useAuth } from '../auth/AuthContext';
 import { patientsApi } from '../api/patients.api';
+
+import PatientEditDialog from
+  '../components/patients/PatientEditDialog';
 
 import PatientRegistrationDialog from
   '../components/patients/PatientRegistrationDialog';
@@ -108,8 +115,18 @@ export default function PatientsPage() {
   const canCreate =
     user?.permissions.includes('patient.create') ?? false;
 
+  const canUpdate =
+    user?.permissions.includes('patient.update') ?? false;
+  const canDelete =
+    user?.permissions.includes('patient.delete') ?? false;
+
+  const canDeactivate =
+    user?.permissions.includes('patient.deactivate') ?? false;
+
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
+  const [patientStatus, setPatientStatus] =
+    useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ALL');
 
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(20);
@@ -133,11 +150,37 @@ export default function PatientsPage() {
   const [selectedPatientId, setSelectedPatientId] =
     useState<string | null>(null);
 
+  const [editingPatient, setEditingPatient] =
+    useState<Patient | null>(null);
+
   const [selectedPatient, setSelectedPatient] =
     useState<Patient | null>(null);
 
   const [detailsLoading, setDetailsLoading] =
     useState(false);
+  const [activationPatient, setActivationPatient] =
+    useState<Patient | null>(null);
+
+  const [activating, setActivating] = useState(false);
+
+  const [activationError, setActivationError] =
+    useState<string | null>(null);
+  const [deletionPatient, setDeletionPatient] =
+    useState<Patient | null>(null);
+  const [deletionReason, setDeletionReason] = useState('');
+  const [deletionConfirmation, setDeletionConfirmation] = useState('');
+  const [deleting, setDeleting] = useState(false);
+  const [deletionError, setDeletionError] =
+    useState<string | null>(null);
+
+  const [deactivationPatient, setDeactivationPatient] =
+    useState<Patient | null>(null);
+
+  const [deactivating, setDeactivating] =
+    useState(false);
+
+  const [deactivationError, setDeactivationError] =
+    useState<string | null>(null);
 
   const [detailsError, setDetailsError] =
     useState<string | null>(null);
@@ -154,6 +197,9 @@ export default function PatientsPage() {
       try {
         const result = await patientsApi.list({
           search: search || undefined,
+          status: patientStatus === 'ALL'
+            ? undefined
+            : patientStatus,
           page: page + 1,
           limit: rowsPerPage,
         });
@@ -181,6 +227,7 @@ export default function PatientsPage() {
   }, [
     canRead,
     search,
+    patientStatus,
     page,
     rowsPerPage,
     refreshKey,
@@ -222,6 +269,12 @@ export default function PatientsPage() {
     };
   }, [selectedPatientId, canRead]);
 
+  const handlePatientStatusChange = (
+    value: 'ALL' | 'ACTIVE' | 'INACTIVE',
+  ) => {
+    setPage(0);
+    setPatientStatus(value);
+  };
   const handleSearch = () => {
     setPage(0);
     setSearch(searchInput.trim());
@@ -237,6 +290,123 @@ export default function PatientsPage() {
     setSelectedPatientId(null);
     setSelectedPatient(null);
     setDetailsError(null);
+  };
+
+  const closeActivationDialog = () => {
+    if (activating) return;
+
+    setActivationPatient(null);
+    setActivationError(null);
+  };
+
+  const confirmPatientActivation = async () => {
+    if (
+      !canUpdate ||
+      !activationPatient ||
+      activationPatient.status !== 'INACTIVE' ||
+      activating
+    ) {
+      return;
+    }
+
+    setActivating(true);
+    setActivationError(null);
+
+    try {
+      await patientsApi.activate(activationPatient.id);
+
+      setSuccessMessage('Patient activated successfully.');
+      setActivationPatient(null);
+      setSelectedPatient(null);
+      setSelectedPatientId(null);
+      setRefreshKey((value) => value + 1);
+    } catch (err) {
+      setActivationError(getErrorMessage(err));
+    } finally {
+      setActivating(false);
+    }
+  };
+  const closeDeletionDialog = () => {
+    if (deleting) return;
+    setDeletionPatient(null);
+    setDeletionReason('');
+    setDeletionConfirmation('');
+    setDeletionError(null);
+  };
+
+  const confirmPatientDeletion = async () => {
+    if (
+      !canDelete ||
+      !deletionPatient ||
+      deletionReason.trim().length < 10 ||
+      deletionConfirmation !== 'DELETE' ||
+      deleting
+    ) {
+      return;
+    }
+
+    setDeleting(true);
+    setDeletionError(null);
+
+    try {
+      await patientsApi.softDelete(
+        deletionPatient.id,
+        deletionReason.trim(),
+        deletionConfirmation,
+      );
+
+      setSuccessMessage('Patient deleted successfully.');
+      setDeletionPatient(null);
+      setDeletionReason('');
+      setDeletionConfirmation('');
+      setSelectedPatient(null);
+      setSelectedPatientId(null);
+      setRefreshKey((value) => value + 1);
+    } catch (err) {
+      setDeletionError(getErrorMessage(err));
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const closeDeactivationDialog = () => {
+    if (deactivating) return;
+
+    setDeactivationPatient(null);
+    setDeactivationError(null);
+  };
+
+  const confirmPatientDeactivation = async () => {
+    if (
+      !canDeactivate ||
+      !deactivationPatient ||
+      deactivationPatient.status !== 'ACTIVE' ||
+      deactivating
+    ) {
+      return;
+    }
+
+    setDeactivating(true);
+    setDeactivationError(null);
+
+    try {
+      await patientsApi.deactivate(deactivationPatient.id);
+
+      setSuccessMessage('Patient deactivated successfully.');
+      setDeactivationPatient(null);
+      setSelectedPatient(null);
+      setSelectedPatientId(null);
+      setRefreshKey((value) => value + 1);
+    } catch (err) {
+      setDeactivationError(getErrorMessage(err));
+    } finally {
+      setDeactivating(false);
+    }
+  };
+  const handlePatientUpdated = () => {
+    setEditingPatient(null);
+    setSuccessMessage('Patient updated successfully.');
+    setRefreshKey((value) => value + 1);
   };
 
   const handlePatientCreated = () => {
@@ -369,6 +539,41 @@ export default function PatientsPage() {
               }
             }}
           />
+
+          <FormControl
+            sx={{
+              minWidth: { xs: '100%', sm: 190 },
+            }}
+          >
+            <InputLabel id="patient-status-filter-label">
+              Patient status
+            </InputLabel>
+
+            <Select
+              labelId="patient-status-filter-label"
+              id="patient-status-filter"
+              value={patientStatus}
+              label="Patient status"
+              onChange={(event) => {
+                handlePatientStatusChange(
+                  event.target.value as
+                    'ALL' | 'ACTIVE' | 'INACTIVE',
+                );
+              }}
+            >
+              <MenuItem value="ALL">
+                All Patients
+              </MenuItem>
+
+              <MenuItem value="ACTIVE">
+                Active
+              </MenuItem>
+
+              <MenuItem value="INACTIVE">
+                Inactive
+              </MenuItem>
+            </Select>
+          </FormControl>
 
           <Button
             variant="contained"
@@ -752,11 +957,292 @@ export default function PatientsPage() {
         </DialogContent>
 
         <DialogActions>
-          <Button onClick={closeDetails}>
+          {canUpdate && selectedPatient && !detailsLoading && (
+            <Button
+              variant="contained"
+              onClick={() => {
+                setEditingPatient(selectedPatient);
+                closeDetails();
+              }}
+            >
+              Edit Patient
+            </Button>
+          )}
+
+          {canUpdate &&
+            selectedPatient?.status === 'INACTIVE' &&
+            !detailsLoading && (
+              <Button
+                color="success"
+                variant="contained"
+                onClick={() => {
+                  setActivationError(null);
+                  setActivationPatient(selectedPatient);
+                  closeDetails();
+                }}
+              >
+                Activate Patient
+              </Button>
+            )}
+          {canDelete && selectedPatient && !detailsLoading && (
+            <Button
+              color="error"
+              variant="outlined"
+              onClick={() => {
+                setDeletionPatient(selectedPatient);
+                setDeletionReason('');
+                setDeletionConfirmation('');
+                setDeletionError(null);
+                closeDetails();
+              }}
+            >
+              Delete Patient
+            </Button>
+          )}
+
+          {canDeactivate &&
+            selectedPatient?.status === 'ACTIVE' &&
+            !detailsLoading && (
+              <Button
+                color="error"
+                onClick={() => {
+                  setDeactivationError(null);
+                  setDeactivationPatient(selectedPatient);
+                  closeDetails();
+                }}
+              >
+                Deactivate Patient
+              </Button>
+            )}          <Button onClick={closeDetails}>
             Close
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* PATIENT ACTIVATION CONFIRMATION */}
+      <Dialog
+        open={activationPatient !== null}
+        onClose={closeActivationDialog}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          Confirm Patient Activation
+        </DialogTitle>
+
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <Alert severity="info">
+              Activation will restore this patient's
+              ACTIVE status. Existing medical records
+              will remain unchanged.
+            </Alert>
+
+            {activationPatient && (
+              <Typography>
+                Activate patient{' '}
+                <strong>
+                  {fullName(activationPatient)}
+                </strong>
+                {' '}(
+                {activationPatient.patientNumber}
+                )?
+              </Typography>
+            )}
+
+            {activationError && (
+              <Alert severity="error">
+                {activationError}
+              </Alert>
+            )}
+          </Stack>
+        </DialogContent>
+
+        <DialogActions>
+          <Button
+            onClick={closeActivationDialog}
+            disabled={activating}
+          >
+            Cancel
+          </Button>
+
+          <Button
+            variant="contained"
+            color="success"
+            disabled={
+              activating ||
+              !canUpdate ||
+              activationPatient?.status !== 'INACTIVE'
+            }
+            onClick={() => {
+              void confirmPatientActivation();
+            }}
+          >
+            {activating
+              ? 'Activating...'
+              : 'Confirm Activation'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+      {/* PATIENT DEACTIVATION CONFIRMATION */}
+
+      <Dialog
+        open={deactivationPatient !== null}
+        onClose={closeDeactivationDialog}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          Confirm Patient Deactivation
+        </DialogTitle>
+
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <Alert severity="warning">
+              Deactivation prevents new clinical encounters
+              for this patient. Existing medical history
+              will be retained.
+            </Alert>
+
+            {deactivationPatient && (
+              <Typography>
+                Deactivate patient{' '}
+                <strong>
+                  {fullName(deactivationPatient)}
+                </strong>
+                {' '}(
+                {deactivationPatient.patientNumber}
+                )?
+              </Typography>
+            )}
+
+            {deactivationError && (
+              <Alert severity="error">
+                {deactivationError}
+              </Alert>
+            )}
+          </Stack>
+        </DialogContent>
+
+        <DialogActions>
+          <Button
+            onClick={closeDeactivationDialog}
+            disabled={deactivating}
+          >
+            Cancel
+          </Button>
+
+          <Button
+            variant="contained"
+            color="error"
+            disabled={
+              deactivating ||
+              !canDeactivate ||
+              deactivationPatient?.status !== 'ACTIVE'
+            }
+            onClick={() => {
+              void confirmPatientDeactivation();
+            }}
+          >
+            {deactivating
+              ? 'Deactivating...'
+              : 'Confirm Deactivation'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+      {/* PATIENT DELETE CONFIRMATION */}
+      <Dialog
+        open={deletionPatient !== null}
+        onClose={closeDeletionDialog}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Confirm Patient Deletion</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <Alert severity="warning">
+              This action removes the patient from active
+              management. Medical history is retained for
+              audit and recordkeeping purposes.
+            </Alert>
+
+            {deletionPatient && (
+              <Typography>
+                Delete patient{' '}
+                <strong>{fullName(deletionPatient)}</strong>
+                {' '}({deletionPatient.patientNumber})?
+              </Typography>
+            )}
+
+            <TextField
+              label="Reason for deletion"
+              value={deletionReason}
+              onChange={(event) =>
+                setDeletionReason(event.target.value)
+              }
+              multiline
+              minRows={2}
+              fullWidth
+              required
+              helperText="Enter at least 10 characters."
+              disabled={deleting}
+            />
+
+            <TextField
+              label="Type DELETE to confirm"
+              value={deletionConfirmation}
+              onChange={(event) =>
+                setDeletionConfirmation(event.target.value)
+              }
+              fullWidth
+              required
+              disabled={deleting}
+            />
+
+            {deletionError && (
+              <Alert severity="error">
+                {deletionError}
+              </Alert>
+            )}
+          </Stack>
+        </DialogContent>
+
+        <DialogActions>
+          <Button
+            onClick={closeDeletionDialog}
+            disabled={deleting}
+          >
+            Cancel
+          </Button>
+
+          <Button
+            color="error"
+            variant="contained"
+            disabled={
+              deleting ||
+              !canDelete ||
+              deletionReason.trim().length < 10 ||
+              deletionConfirmation !== 'DELETE'
+            }
+            onClick={() => {
+              void confirmPatientDeletion();
+            }}
+          >
+            {deleting ? 'Deleting...' : 'Confirm Delete Patient'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* PATIENT EDIT DIALOG */}
+
+      {canUpdate && (
+        <PatientEditDialog
+          open={editingPatient !== null}
+          patient={editingPatient}
+          onClose={() => setEditingPatient(null)}
+          onUpdated={handlePatientUpdated}
+        />
+      )}
 
       {/* PATIENT REGISTRATION DIALOG */}
 

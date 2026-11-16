@@ -44,7 +44,7 @@ const modules = [
     icon: <PeopleIcon color="primary" />,
   },
   {
-    title: 'Encounters',
+    title: 'Patient Visits',
     path: '/encounters',
     permission: 'encounter.read',
     icon: <AssignmentIcon color="primary" />,

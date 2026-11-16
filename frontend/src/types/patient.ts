@@ -1,4 +1,4 @@
-﻿export interface PatientContact {
+export interface PatientContact {
   id?: string;
   contactType: string;
   contactValue: string;
@@ -63,6 +63,7 @@ export interface PatientListResponse {
 
 export interface PatientSearchParams {
   search?: string;
+  status?: 'ACTIVE' | 'INACTIVE';
   page?: number;
   limit?: number;
 }

@@ -1,4 +1,4 @@
-import {
+﻿import {
   BrowserRouter,
   Navigate,
   Route,
@@ -20,50 +20,81 @@ import HealthReportsPage from './pages/HealthReportsPage';
 import AppointmentReportsPage from './pages/AppointmentReportsPage';
 import LaboratoryPage from './pages/LaboratoryPage';
 import RadiologyPage from './pages/RadiologyPage';
+import AdministrationPage from './pages/AdministrationPage';
+import AuditLogsPage from './pages/AuditLogsPage';
+import ProfilePage from './pages/ProfilePage';
+import ChangePasswordForm from './components/auth/ChangePasswordForm';
 
 function ProtectedRoute({
   children,
 }: {
   children: ReactNode;
 }) {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
+  }
+
+  if (user?.mustChangePassword) {
+    return <Navigate to="/change-password-required" replace />;
   }
 
   return <AppLayout>{children}</AppLayout>;
 }
 
 function LoginRoute() {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
 
-  return isAuthenticated ? (
-    <Navigate to="/dashboard" replace />
-  ) : (
-    <LoginPage />
-  );
+  if (!isAuthenticated) {
+    return <LoginPage />;
+  }
+
+  if (user?.mustChangePassword) {
+    return <Navigate to="/change-password-required" replace />;
+  }
+
+  return <Navigate to="/dashboard" replace />;
 }
 
-function ModulePlaceholder({
-  title,
-}: {
-  title: string;
-}) {
+function MandatoryPasswordRoute() {
+  const { isAuthenticated, user } = useAuth();
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (!user?.mustChangePassword) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
   return (
-    <div>
-      <h2>{title}</h2>
+    <main
+      style={{
+        maxWidth: 560,
+        margin: '64px auto',
+        padding: 16,
+      }}
+    >
+      <h1>Password Change Required</h1>
       <p>
-        This PIMS module is planned for a future development step.
+        Your administrator has reset your password.
+        Change your temporary password before continuing.
       </p>
-    </div>
+      <ChangePasswordForm />
+    </main>
   );
 }
+
 
 export default function App() {
   return (
     <BrowserRouter>
       <Routes>
+        <Route
+          path="/change-password-required"
+          element={<MandatoryPasswordRoute />}
+        />
         <Route
           path="/login"
           element={<LoginRoute />}
@@ -145,24 +176,31 @@ export default function App() {
             </ProtectedRoute>
           }
         />
-{[
-  
-  
+        <Route
+          path="/audit"
+          element={
+            <ProtectedRoute>
+              <AuditLogsPage />
+            </ProtectedRoute>
+          }
+        />
 
-  ['administration', 'Administration'],
-  ['audit', 'Audit Logs'],
-].map(([path, title]) => (
-          <Route
-            key={path}
-            path={`/${path}`}
-            element={
-              <ProtectedRoute>
-                <ModulePlaceholder title={title} />
-              </ProtectedRoute>
-            }
-          />
-        ))}
-
+        <Route
+          path="/administration"
+          element={
+            <ProtectedRoute>
+              <AdministrationPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/profile"
+          element={
+            <ProtectedRoute>
+              <ProfilePage />
+            </ProtectedRoute>
+          }
+        />
         <Route
           path="*"
           element={<Navigate to="/dashboard" replace />}
@@ -171,3 +209,4 @@ export default function App() {
     </BrowserRouter>
   );
 }
+

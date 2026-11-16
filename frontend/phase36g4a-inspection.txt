@@ -1,0 +1,1562 @@
+
+========================================
+FILE: src\App.tsx
+========================================
+Total lines: 160
+   1: import {
+   2:   BrowserRouter,
+   3:   Navigate,
+   4:   Route,
+   5:   Routes,
+   6: } from 'react-router-dom';
+   7: 
+   8: import type { ReactNode } from 'react';
+   9: 
+  10: import { useAuth } from './auth/AuthContext';
+  11: import AppLayout from './layouts/AppLayout';
+  29:   children: ReactNode;
+  30: }) {
+  31:   const { isAuthenticated } = useAuth();
+  32: 
+  33:   if (!isAuthenticated) {
+  34:     return <Navigate to="/login" replace />;
+  35:   }
+  36: 
+  37:   return <AppLayout>{children}</AppLayout>;
+  38: }
+  39: 
+  40: function LoginRoute() {
+  41:   const { isAuthenticated } = useAuth();
+  42: 
+  43:   return isAuthenticated ? (
+  44:     <Navigate to="/dashboard" replace />
+  45:   ) : (
+  46:     <LoginPage />
+  47:   );
+  48: }
+  49: 
+  50: 
+  51: export default function App() {
+  52:   return (
+ 150:             </ProtectedRoute>
+ 151:           }
+ 152:         />
+ 153:         <Route
+ 154:           path="*"
+ 155:           element={<Navigate to="/dashboard" replace />}
+ 156:         />
+ 157:       </Routes>
+ 158:     </BrowserRouter>
+ 159:   );
+ 160: }
+
+========================================
+FILE: src\pages\PatientsPage.tsx
+========================================
+Total lines: 785
+   5:   Alert,
+   6:   Box,
+   7:   Button,
+   8:   Chip,
+   9:   CircularProgress,
+  10:   Dialog,
+  11:   DialogActions,
+  12:   DialogContent,
+  13:   DialogTitle,
+  14:   Divider,
+  15:   Paper,
+  16:   Stack,
+  17:   Table,
+  18:   TableBody,
+  19:   TableCell,
+  20:   TableContainer,
+  21:   TableHead,
+  33: import axios from 'axios';
+  34: 
+  35: import { useAuth } from '../auth/AuthContext';
+  36: import { patientsApi } from '../api/patients.api';
+  37: 
+  38: import PatientRegistrationDialog from
+  39:   '../components/patients/PatientRegistrationDialog';
+  40:   import PatientCsvImportDialog from
+  41:   '../components/patients/PatientCsvImportDialog';
+  42: 
+  43: import type {
+  44:   Patient,
+  45:   PatientListResponse,
+  46: } from '../types/patient';
+  47: 
+  48: function getErrorMessage(error: unknown): string {
+  49:   if (axios.isAxiosError(error)) {
+ 100: }
+ 101: 
+ 102: export default function PatientsPage() {
+ 103:   const { user } = useAuth();
+ 104: 
+ 105:   const canRead =
+ 106:     user?.permissions.includes('patient.read') ?? false;
+ 107: 
+ 108:   const canCreate =
+ 109:     user?.permissions.includes('patient.create') ?? false;
+ 110: 
+ 111:   const [searchInput, setSearchInput] = useState('');
+ 112:   const [search, setSearch] = useState('');
+ 113: 
+ 114:   const [page, setPage] = useState(0);
+ 115:   const [rowsPerPage, setRowsPerPage] = useState(20);
+ 116: 
+ 128:   useState(false);  
+ 129: 
+ 130:   const [successMessage, setSuccessMessage] =
+ 131:     useState<string | null>(null);
+ 132: 
+ 133:   const [selectedPatientId, setSelectedPatientId] =
+ 134:     useState<string | null>(null);
+ 135: 
+ 136:   const [selectedPatient, setSelectedPatient] =
+ 137:     useState<Patient | null>(null);
+ 138: 
+ 139:   const [detailsLoading, setDetailsLoading] =
+ 140:     useState(false);
+ 141: 
+ 142:   const [detailsError, setDetailsError] =
+ 143:     useState<string | null>(null);
+ 144: 
+ 145:   useEffect(() => {
+ 146:     if (!canRead) return;
+ 147: 
+ 148:     let active = true;
+ 149: 
+ 150:     async function loadPatients() {
+ 151:       setLoading(true);
+ 152:       setError(null);
+ 153: 
+ 154:       try {
+ 177: 
+ 178:     return () => {
+ 179:       active = false;
+ 180:     };
+ 181:   }, [
+ 182:     canRead,
+ 183:     search,
+ 184:     page,
+ 185:     rowsPerPage,
+ 186:     refreshKey,
+ 187:   ]);
+ 188: 
+ 189:   useEffect(() => {
+ 190:     if (!selectedPatientId || !canRead) return;
+ 191: 
+ 192:     let active = true;
+ 193: 
+ 194:     async function loadPatientDetails() {
+ 195:       setDetailsLoading(true);
+ 196:       setDetailsError(null);
+ 197:       setSelectedPatient(null);
+ 198: 
+ 199:       try {
+ 200:         const result = await patientsApi.getById(
+ 201:           selectedPatientId!,
+ 202:         );
+ 203: 
+ 204:         if (active) {
+ 205:           setSelectedPatient(result);
+ 206:         }
+ 207:       } catch (err) {
+ 208:         if (active) {
+ 209:           setDetailsError(getErrorMessage(err));
+ 210:         }
+ 211:       } finally {
+ 212:         if (active) {
+ 213:           setDetailsLoading(false);
+ 218:     void loadPatientDetails();
+ 219: 
+ 220:     return () => {
+ 221:       active = false;
+ 222:     };
+ 223:   }, [selectedPatientId, canRead]);
+ 224: 
+ 225:   const handleSearch = () => {
+ 226:     setPage(0);
+ 227:     setSearch(searchInput.trim());
+ 228:   };
+ 229: 
+ 230:   const clearSearch = () => {
+ 231:     setSearchInput('');
+ 232:     setSearch('');
+ 233:     setPage(0);
+ 234:   };
+ 235: 
+ 236:   const closeDetails = () => {
+ 237:     setSelectedPatientId(null);
+ 238:     setSelectedPatient(null);
+ 239:     setDetailsError(null);
+ 240:   };
+ 241: 
+ 242:   const handlePatientCreated = () => {
+ 243:     setRegistrationOpen(false);
+ 244: 
+ 245:     setSuccessMessage(
+ 246:       'Patient registered successfully.',
+ 260:   setPage(0);
+ 261: 
+ 262:   setRefreshKey((value) => value + 1);
+ 263: };
+ 264: 
+ 265:   if (!canRead) {
+ 266:     return (
+ 267:       <Alert severity="warning">
+ 268:         You do not have permission to view patient records.
+ 269:       </Alert>
+ 270:     );
+ 271:   }
+ 272: 
+ 273:   return (
+ 297:           <Typography color="text.secondary">
+ 298:             Search, register, and manage patient records.
+ 299:           </Typography>
+ 300:         </Box>
+ 301: 
+ 302: {canCreate && (
+ 303:   <Stack
+ 304:     direction={{ xs: 'column', sm: 'row' }}
+ 305:     spacing={1.5}
+ 306:   >
+ 307:     <Button
+ 308:       variant="contained"
+ 309:       startIcon={<AddIcon />}
+ 310:       onClick={() => {
+ 311:         setSuccessMessage(null);
+ 312:         setRegistrationOpen(true);
+ 313:       }}
+ 314:     >
+ 315:       Register Patient
+ 316:     </Button>
+ 317: 
+ 318:     <Button
+ 319:       variant="outlined"
+ 320:       startIcon={<UploadFileIcon />}
+ 321:       onClick={() => {
+ 322:         setSuccessMessage(null);
+ 323:         setCsvImportOpen(true);
+ 324:       }}
+ 325:     >
+ 326:       Import Patients (CSV)
+ 327:     </Button>
+ 328:   </Stack>
+ 329: )}
+ 371:           />
+ 372: 
+ 373:           <Button
+ 374:             variant="contained"
+ 375:             startIcon={<SearchIcon />}
+ 376:             onClick={handleSearch}
+ 377:             disabled={loading}
+ 378:             sx={{ minWidth: 120 }}
+ 379:           >
+ 380:             Search
+ 381:           </Button>
+ 382: 
+ 383:           <Button
+ 384:             variant="outlined"
+ 385:             onClick={clearSearch}
+ 386:             disabled={loading}
+ 387:           >
+ 388:             Clear
+ 389:           </Button>
+ 390:         </Stack>
+ 391: 
+ 392:         {error && (
+ 393:           <Alert
+ 499: 
+ 500:                     <TableCell align="right">
+ 501:                       <Button
+ 502:                         size="small"
+ 503:                         startIcon={<VisibilityIcon />}
+ 504:                         onClick={() =>
+ 505:                           setSelectedPatientId(
+ 506:                             patient.id,
+ 507:                           )
+ 508:                         }
+ 509:                       >
+ 510:                         View
+ 511:                       </Button>
+ 512:                     </TableCell>
+ 513:                   </TableRow>
+ 539:             setPage(0);
+ 540:           }}
+ 541:         />
+ 542:       </Paper>
+ 543: 
+ 544:       {/* PATIENT DETAILS DIALOG */}
+ 545: 
+ 546:       <Dialog
+ 547:         open={selectedPatientId !== null}
+ 548:         onClose={closeDetails}
+ 549:         fullWidth
+ 550:         maxWidth="sm"
+ 551:       >
+ 552:         <DialogTitle>
+ 553:           Patient Details
+ 554:         </DialogTitle>
+ 555: 
+ 556:         <DialogContent dividers>
+ 557:           {detailsLoading && (
+ 558:             <Box
+ 559:               sx={{
+ 560:                 textAlign: 'center',
+ 561:                 py: 3,
+ 562:               }}
+ 563:             >
+ 564:               <CircularProgress />
+ 569:             <Alert severity="error">
+ 570:               {detailsError}
+ 571:             </Alert>
+ 572:           )}
+ 573: 
+ 574:           {selectedPatient && (
+ 575:             <Stack spacing={2}>
+ 576:               <Typography>
+ 577:                 <strong>
+ 578:                   Patient Number:
+ 579:                 </strong>{' '}
+ 580:                 {selectedPatient.patientNumber}
+ 581:               </Typography>
+ 582: 
+ 583:               <Typography>
+ 584:                 <strong>
+ 585:                   Medical Record Number:
+ 586:                 </strong>{' '}
+ 587:                 {selectedPatient.medicalRecordNumber || '-'}
+ 588:               </Typography>
+ 589: 
+ 590:               <Typography>
+ 591:                 <strong>
+ 592:                   Full Name:
+ 593:                 </strong>{' '}
+ 594:                 {fullName(selectedPatient)}
+ 595:               </Typography>
+ 596: 
+ 597:               <Typography>
+ 598:                 <strong>
+ 599:                   Date of Birth:
+ 600:                 </strong>{' '}
+ 601:                 {formatDate(
+ 602:                   selectedPatient.dateOfBirth,
+ 603:                 )}
+ 604:               </Typography>
+ 605: 
+ 606:               <Typography>
+ 607:                 <strong>
+ 608:                   Gender:
+ 609:                 </strong>{' '}
+ 610:                 {selectedPatient.gender || '-'}
+ 611:               </Typography>
+ 612: 
+ 613:               <Typography>
+ 614:                 <strong>
+ 615:                   Blood Group:
+ 616:                 </strong>{' '}
+ 617:                 {selectedPatient.bloodGroup || '-'}
+ 618:               </Typography>
+ 619: 
+ 620:               <Typography>
+ 621:                 <strong>
+ 622:                   Marital Status:
+ 623:                 </strong>{' '}
+ 624:                 {selectedPatient.maritalStatus || '-'}
+ 625:               </Typography>
+ 626: 
+ 627:               <Typography>
+ 628:                 <strong>
+ 629:                   Nationality:
+ 630:                 </strong>{' '}
+ 631:                 {selectedPatient.nationality || '-'}
+ 632:               </Typography>
+ 633: 
+ 634:               <Typography>
+ 635:                 <strong>
+ 636:                   Preferred Language:
+ 637:                 </strong>{' '}
+ 638:                 {selectedPatient.preferredLanguage || '-'}
+ 639:               </Typography>
+ 640: 
+ 641:               <Typography>
+ 642:                 <strong>
+ 643:                   Occupation:
+ 644:                 </strong>{' '}
+ 645:                 {selectedPatient.occupation || '-'}
+ 646:               </Typography>
+ 647: 
+ 648:               <Typography>
+ 649:                 <strong>
+ 650:                   Status:
+ 651:                 </strong>{' '}
+ 652:                 {selectedPatient.status}
+ 653:               </Typography>
+ 654: 
+ 655:               <Divider />
+ 656: 
+ 657:               {/* IDENTIFICATION */}
+ 658: 
+ 659:               <Typography
+ 660:                 variant="subtitle1"
+ 661:                 sx={{ fontWeight: 600 }}
+ 662:               >
+ 663:                 Patient Identification
+ 664:               </Typography>
+ 665: 
+ 666:               {selectedPatient.identifiers?.length ? (
+ 667:                 selectedPatient.identifiers.map(
+ 668:                   (identifier, index) => (
+ 669:                     <Typography
+ 670:                       key={identifier.id ?? index}
+ 671:                     >
+ 672:                       {identifier.identifierType}:{' '}
+ 673:                       {identifier.identifierValue}
+ 674:                     </Typography>
+ 675:                   ),
+ 689:                 sx={{ fontWeight: 600 }}
+ 690:               >
+ 691:                 Contact Information
+ 692:               </Typography>
+ 693: 
+ 694:               {selectedPatient.contacts?.length ? (
+ 695:                 selectedPatient.contacts.map(
+ 696:                   (contact, index) => (
+ 697:                     <Typography
+ 698:                       key={contact.id ?? index}
+ 699:                     >
+ 700:                       {contact.contactType}:{' '}
+ 701:                       {contact.contactValue}
+ 702:                     </Typography>
+ 703:                   ),
+ 717:                 sx={{ fontWeight: 600 }}
+ 718:               >
+ 719:                 Address Information
+ 720:               </Typography>
+ 721: 
+ 722:               {selectedPatient.addresses?.length ? (
+ 723:                 selectedPatient.addresses.map(
+ 724:                   (address, index) => (
+ 725:                     <Typography
+ 726:                       key={address.id ?? index}
+ 727:                     >
+ 728:                       {[
+ 729:                         address.country,
+ 730:                         address.region,
+ 731:                         address.zone,
+ 747:                   No address information available.
+ 748:                 </Typography>
+ 749:               )}
+ 750:             </Stack>
+ 751:           )}
+ 752:         </DialogContent>
+ 753: 
+ 754:         <DialogActions>
+ 755:           <Button onClick={closeDetails}>
+ 756:             Close
+ 757:           </Button>
+ 758:         </DialogActions>
+ 759:       </Dialog>
+ 760: 
+ 761:       {/* PATIENT REGISTRATION DIALOG */}
+ 762: 
+ 763:       {canCreate && (
+ 764:         <PatientRegistrationDialog
+ 765:           open={registrationOpen}
+ 766:           onClose={() =>
+ 767:             setRegistrationOpen(false)
+ 768:           }
+ 769:           onCreated={handlePatientCreated}
+ 770:         />
+ 771:       )}
+ 772: 
+ 773: {/* CSV BULK PATIENT REGISTRATION DIALOG */}
+ 774: 
+ 775: {canCreate && (
+ 776:   <PatientCsvImportDialog
+ 777:     open={csvImportOpen}
+ 778:     onClose={() => setCsvImportOpen(false)}
+ 779:     onImported={handlePatientsImported}
+ 780:   />
+ 781: )}
+ 782: 
+ 783:     </Box>
+ 784:   );
+
+========================================
+FILE: src\pages\AppointmentsPage.tsx
+========================================
+Total lines: 733
+  27: import EventNoteIcon from '@mui/icons-material/EventNote';
+  28: 
+  29: import { useAuth } from '../auth/AuthContext';
+  30: import { patientsApi } from '../api/patients.api';
+  31: import type { Patient } from '../types/patient';
+  32: import AppointmentCreateDialog from '../components/appointments/AppointmentCreateDialog';
+  33: import AppointmentDetailsDialog from '../components/appointments/AppointmentDetailsDialog';
+  34: import AppointmentStatusDialog from '../components/appointments/AppointmentStatusDialog';
+  35: import AppointmentRescheduleDialog from '../components/appointments/AppointmentRescheduleDialog';
+  36: import {
+  37:   appointmentsApi,
+  38:   type Appointment,
+  39:   type AppointmentStatus,
+  40: } from '../api/appointments.api';
+  41: 
+  42: const ETHIOPIA_TIME_ZONE = 'Africa/Addis_Ababa';
+  43: 
+ 126: }
+ 127: 
+ 128: export default function AppointmentsPage() {
+ 129:   const { user } = useAuth();
+ 130: 
+ 131:   const canRead =
+ 132:     user?.permissions.includes('appointment.read') ?? false;
+ 133: 
+ 134:   const canReadPatient =
+ 135:     user?.permissions.includes('patient.read') ?? false;
+ 136: 
+ 137:   const canCreate =
+ 138:     user?.permissions.includes('appointment.create') ?? false;
+ 139: 
+ 140:   const canUpdate =
+ 141:     user?.permissions.includes('appointment.update') ?? false;
+ 142: 
+ 143:   const [createOpen, setCreateOpen] = useState(false);
+ 144: 
+ 145:   const [detailsOpen, setDetailsOpen] = useState(false);
+ 186: 
+ 187:   const [loading, setLoading] = useState(false);
+ 188:   const [error, setError] = useState<string | null>(null);
+ 189: 
+ 190:   const loadAppointments = useCallback(async () => {
+ 191:     if (!canRead) return;
+ 192: 
+ 193:     setLoading(true);
+ 194:     setError(null);
+ 195: 
+ 196:     try {
+ 197:       const result = await appointmentsApi.list({
+ 198:         ...(appliedFilters.search
+ 199:           ? { search: appliedFilters.search }
+ 218:     } catch (err: unknown) {
+ 219:       setError(getErrorMessage(err));
+ 220:     } finally {
+ 221:       setLoading(false);
+ 222:     }
+ 223:   }, [canRead, appliedFilters]);
+ 224: 
+ 225:   useEffect(() => {
+ 226:     void loadAppointments();
+ 227:   }, [loadAppointments]);
+ 228: 
+ 229:   const handleApplyFilters = () => {
+ 230:     if (
+ 231:       dateFromInput &&
+ 265:       dateTo: '',
+ 266:     });
+ 267:   };
+ 268: 
+ 269:   useEffect(() => {
+ 270:     if (!canReadPatient || !canRead) {
+ 271:       setPatientMap({});
+ 272:       setPatientLookupError(false);
+ 273:       return;
+ 274:     }
+ 275: 
+ 276:     const patientIds = [
+ 277:       ...new Set(appointments.map((item) => item.patientId)),
+ 278:     ];
+ 279: 
+ 280:     if (patientIds.length === 0) {
+ 281:       setPatientMap({});
+ 282:       setPatientLookupError(false);
+ 283:       return;
+ 284:     }
+ 285: 
+ 286:     let cancelled = false;
+ 287: 
+ 288:     const loadPatients = async () => {
+ 289:       setPatientLookupLoading(true);
+ 290:       setPatientLookupError(false);
+ 291: 
+ 292:       const results = await Promise.allSettled(
+ 293:         patientIds.map((id) => patientsApi.getById(id)),
+ 294:       );
+ 295: 
+ 296:       if (cancelled) return;
+ 297: 
+ 298:       const nextMap: Record<string, Patient> = {};
+ 299:       let failed = false;
+ 300: 
+ 301:       results.forEach((result, index) => {
+ 302:         if (result.status === 'fulfilled') {
+ 303:           nextMap[patientIds[index]] = result.value;
+ 304:         } else {
+ 305:           failed = true;
+ 306:         }
+ 307:       });
+ 308: 
+ 309:       setPatientMap(nextMap);
+ 310:       setPatientLookupError(failed);
+ 311:       setPatientLookupLoading(false);
+ 314:     void loadPatients();
+ 315: 
+ 316:     return () => {
+ 317:       cancelled = true;
+ 318:     };
+ 319:   }, [appointments, canReadPatient, canRead]);
+ 320: 
+ 321:   const handleViewDetails = async (id: string) => {
+ 322:     setSelectedAppointment(null);
+ 323:     setDetailsError(null);
+ 324:     setDetailsOpen(true);
+ 325:     setDetailsLoading(true);
+ 326: 
+ 327:     try {
+ 332:     } finally {
+ 333:       setDetailsLoading(false);
+ 334:     }
+ 335:   };
+ 336: 
+ 337:   if (!canRead) {
+ 338:     return (
+ 339:       <Alert severity="warning">
+ 340:         You do not have permission to view appointments.
+ 341:       </Alert>
+ 342:     );
+ 343:   }
+ 344: 
+ 345:   return (
+ 365:             Schedule, manage, and track patient appointments.
+ 366:           </Typography>
+ 367:         </Box>
+ 368: 
+ 369:         <Stack direction="row" spacing={1}>
+ 370:           {canCreate && (
+ 371:             <Button
+ 372:               variant="contained"
+ 373:               onClick={() => setCreateOpen(true)}
+ 374:             >
+ 375:               New Appointment
+ 376:             </Button>
+ 377:           )}
+ 378: 
+ 379:           <Button
+ 380:             variant="outlined"
+ 381:             onClick={() => setShowHistory((value) => !value)}
+ 382:           >
+ 383:             {showHistory ? 'Active Appointments' : 'Show History'}
+ 384:           </Button>
+ 385: 
+ 386:           <Button
+ 387:             variant="outlined"
+ 388:             startIcon={<RefreshIcon />}
+ 389:             onClick={() => void loadAppointments()}
+ 390:             disabled={loading}
+ 391:           >
+ 392:             Refresh
+ 393:           </Button>
+ 394:         </Stack>
+ 395:       </Stack>
+ 396: 
+ 397:       <Paper sx={{ p: 2, mb: 2 }}>
+ 467:           )}
+ 468: 
+ 469:           <Stack direction="row" spacing={1}>
+ 470:             <Button
+ 471:               variant="contained"
+ 472:               onClick={handleApplyFilters}
+ 473:               disabled={loading}
+ 474:             >
+ 475:               Search
+ 476:             </Button>
+ 477: 
+ 478:             <Button
+ 479:               variant="outlined"
+ 480:               onClick={handleClearFilters}
+ 481:               disabled={loading}
+ 482:             >
+ 483:               Clear Filters
+ 484:             </Button>
+ 485:           </Stack>
+ 486:         </Stack>
+ 487:       </Paper>
+ 488: 
+ 490:         <Alert severity="error" sx={{ mb: 2 }}>
+ 491:           {error}
+ 492:         </Alert>
+ 493:       )}
+ 494: 
+ 495:       {patientLookupError && canReadPatient && (
+ 496:         <Alert severity="warning" sx={{ mb: 2 }}>
+ 497:           Some patient details could not be loaded.
+ 498:           Appointment records remain available.
+ 499:         </Alert>
+ 500:       )}
+ 501: 
+ 502:       <Paper sx={{ overflow: 'hidden' }}>
+ 503:         {loading ? (
+ 537:                     <TableCell>
+ 538:                       {appointment.appointmentNumber}
+ 539:                     </TableCell>
+ 540: 
+ 541:                     <TableCell>
+ 542:                       {canReadPatient
+ 543:                         ? patientMap[appointment.patientId]
+ 544:                           ? [
+ 545:                               patientMap[appointment.patientId].firstName,
+ 546:                               patientMap[appointment.patientId].middleName,
+ 547:                               patientMap[appointment.patientId].lastName,
+ 548:                             ]
+ 549:                               .filter(Boolean)
+ 550:                               .join(' ')
+ 551:                           : patientLookupLoading
+ 552:                             ? 'Loading...'
+ 553:                             : 'Unavailable'
+ 554:                         : 'Restricted'}
+ 555:                     </TableCell>
+ 556: 
+ 557:                     <TableCell>
+ 558:                       {canReadPatient
+ 559:                         ? patientMap[appointment.patientId]
+ 560:                           ? patientMap[appointment.patientId].medicalRecordNumber
+ 561:                             ? patientMap[appointment.patientId].medicalRecordNumber
+ 562:                             : `Patient No: ${patientMap[appointment.patientId].patientNumber}`
+ 563:                           : patientLookupLoading
+ 564:                             ? 'Loading...'
+ 565:                             : '-'
+ 566:                         : 'Restricted'}
+ 567:                     </TableCell>
+ 568: 
+ 569:                     <TableCell>
+ 570:                       {appointment.appointmentType || '-'}
+ 596: 
+ 597:                     <TableCell align="right">
+ 598:                       <Button
+ 599:                         size="small"
+ 600:                         variant="outlined"
+ 601:                         onClick={() =>
+ 602:                           void handleViewDetails(appointment.id)
+ 603:                         }
+ 604:                       >
+ 605:                         View
+ 606:                       </Button>
+ 607:                     </TableCell>
+ 608:                   </TableRow>
+ 609:                 ))}
+ 642:         sx={{ display: 'block', mt: 2 }}
+ 643:       >
+ 644:         Showing {visibleAppointments.length} appointment(s).
+ 645:         Times are displayed in Ethiopia local time.
+ 646:       </Typography>
+ 647:       {canCreate && (
+ 648:         <AppointmentCreateDialog
+ 649:           open={createOpen}
+ 650:           onClose={() => setCreateOpen(false)}
+ 651:           onCreated={() => {
+ 652:             void loadAppointments();
+ 653:           }}
+ 654:         />
+ 655:       )}
+ 656:       {canUpdate && (
+ 657:         <AppointmentStatusDialog
+ 658:           open={statusOpen}
+ 659:           appointment={selectedAppointment}
+ 660:           canCancel={false}
+ 661:           onClose={() => setStatusOpen(false)}
+ 662:           onUpdated={() => {
+ 663:             void loadAppointments();
+ 664:             if (selectedAppointment) {
+ 665:               void appointmentsApi
+ 668:             }
+ 669:           }}
+ 670:         />
+ 671:       )}
+ 672:       {canUpdate && (
+ 673:         <AppointmentRescheduleDialog
+ 674:           open={rescheduleOpen}
+ 675:           appointment={selectedAppointment}
+ 676:           onClose={() => setRescheduleOpen(false)}
+ 677:           onRescheduled={(updated) => {
+ 678:             setSelectedAppointment(updated);
+ 679:             void loadAppointments();
+ 680:           }}
+ 681:         />
+ 682:       )}
+ 683: 
+ 684:       <AppointmentDetailsDialog
+ 685:         canUpdate={canUpdate}
+ 686:         onManageStatus={() => {
+ 687:           setDetailsOpen(false);
+ 688:           setStatusOpen(true);
+ 689:         }}
+ 690:         onReschedule={() => {
+ 691:           setDetailsOpen(false);
+ 692:           setRescheduleOpen(true);
+ 693:         }}
+ 694:         open={detailsOpen}
+ 695:         appointment={selectedAppointment}
+ 696:         patientName={
+ 697:           !canReadPatient
+ 698:             ? 'Restricted'
+ 699:             : selectedAppointment &&
+ 700:                 patientMap[selectedAppointment.patientId]
+ 701:               ? [
+ 702:                   patientMap[selectedAppointment.patientId].firstName,
+ 703:                   patientMap[selectedAppointment.patientId].middleName,
+ 704:                   patientMap[selectedAppointment.patientId].lastName,
+ 705:                 ]
+ 706:                   .filter(Boolean)
+ 707:                   .join(' ')
+ 708:               : patientLookupLoading
+ 709:                 ? 'Loading...'
+ 710:                 : 'Unavailable'
+ 711:         }
+ 712:         patientIdentifier={
+ 713:           !canReadPatient
+ 714:             ? 'Restricted'
+ 715:             : selectedAppointment &&
+ 716:                 patientMap[selectedAppointment.patientId]
+ 717:               ? patientMap[selectedAppointment.patientId].medicalRecordNumber ||
+ 718:                 `Patient No: ${patientMap[selectedAppointment.patientId].patientNumber}`
+ 719:               : patientLookupLoading
+ 720:                 ? 'Loading...'
+ 721:                 : '-'
+ 722:         }
+ 723:         loading={detailsLoading}
+ 724:         error={detailsError}
+ 725:         onClose={() => {
+ 726:           setDetailsOpen(false);
+
+========================================
+FILE: src\pages\EncountersPage.tsx
+========================================
+Total lines: 644
+   6:   Alert,
+   7:   Box,
+   8:   Button,
+   9:   Chip,
+  10:   CircularProgress,
+  11:   Dialog,
+  12:   DialogActions,
+  13:   DialogContent,
+  14:   DialogTitle,
+  15:   FormControl,
+  16:   InputLabel,
+  17:   MenuItem,
+  18:   Paper,
+  19:   Select,
+  20:   Stack,
+  21:   Table,
+  22:   TableBody,
+  30: 
+  31: import RefreshIcon from '@mui/icons-material/Refresh';
+  32: import VisibilityIcon from '@mui/icons-material/Visibility';
+  33: 
+  34: import { useAuth } from '../auth/AuthContext';
+  35: import CreateEncounterDialog from '../components/encounters/CreateEncounterDialog';
+  36: import EncounterClinicalActions from '../components/encounters/EncounterClinicalActions';
+  37: 
+  38: import {
+  39:   encountersApi,
+  40:   type Encounter,
+  41:   type EncounterListResponse,
+  42: } from '../api/encounters.api';
+  43: 
+ 119: ============================================ */
+ 120: 
+ 121: export default function EncountersPage() {
+ 122:   const { user } = useAuth();
+ 123: 
+ 124:   const canRead =
+ 125:     user?.permissions.includes('encounter.read') ?? false;
+ 126: 
+ 127:   const canCreate =
+ 128:     user?.permissions.includes('encounter.create') ?? false;
+ 129: 
+ 130:   const [page, setPage] = useState(0);
+ 131: 
+ 132:   const [rowsPerPage, setRowsPerPage] =
+ 133:     useState(20);
+ 134: 
+ 135:   const [status, setStatus] = useState('');
+ 141: 
+ 142:   const [error, setError] =
+ 143:     useState<string | null>(null);
+ 144: 
+ 145:   const [refreshKey, setRefreshKey] = useState(0);
+ 146:   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+ 147:   const [successMessage, setSuccessMessage] =
+ 148:     useState<string | null>(null);
+ 149: 
+ 150:   const [selectedEncounterId, setSelectedEncounterId] =
+ 151:     useState<string | null>(null);
+ 152: 
+ 153:   const [selectedEncounter, setSelectedEncounter] =
+ 154:     useState<Encounter | null>(null);
+ 155: 
+ 156:   const [detailsLoading, setDetailsLoading] =
+ 157:     useState(false);
+ 158: 
+ 162:   /* ========================================
+ 163:      LOAD ENCOUNTERS
+ 164:   ======================================== */
+ 165: 
+ 166:   useEffect(() => {
+ 167:     if (!canRead) return;
+ 168: 
+ 169:     let active = true;
+ 170: 
+ 171:     async function loadEncounters() {
+ 172:       setLoading(true);
+ 173:       setError(null);
+ 174: 
+ 175:       try {
+ 198: 
+ 199:     return () => {
+ 200:       active = false;
+ 201:     };
+ 202:   }, [
+ 203:     canRead,
+ 204:     page,
+ 205:     rowsPerPage,
+ 206:     status,
+ 207:     refreshKey,
+ 208:   ]);
+ 209: 
+ 210:   /* ========================================
+ 211:      LOAD ENCOUNTER DETAILS
+ 212:   ======================================== */
+ 213: 
+ 214:   useEffect(() => {
+ 215:     if (!selectedEncounterId || !canRead) return;
+ 216: 
+ 217:     let active = true;
+ 218: 
+ 219:     async function loadDetails() {
+ 220:       setDetailsLoading(true);
+ 221:       setDetailsError(null);
+ 222:       setSelectedEncounter(null);
+ 223: 
+ 224:       try {
+ 225:         const result =
+ 226:           await encountersApi.getById(
+ 227:             selectedEncounterId!,
+ 228:           );
+ 229: 
+ 230:         if (active) {
+ 231:           setSelectedEncounter(result);
+ 232:         }
+ 233:       } catch (err) {
+ 234:         if (active) {
+ 235:           setDetailsError(getErrorMessage(err));
+ 244:     void loadDetails();
+ 245: 
+ 246:     return () => {
+ 247:       active = false;
+ 248:     };
+ 249:   }, [selectedEncounterId, canRead]);
+ 250: 
+ 251:   const closeDetails = () => {
+ 252:     setSelectedEncounterId(null);
+ 253:     setSelectedEncounter(null);
+ 254:     setDetailsError(null);
+ 255:   };
+ 256: 
+ 257:   if (!canRead) {
+ 258:     return (
+ 259:       <Alert severity="warning">
+ 260:         You do not have permission to view encounters.
+ 261:       </Alert>
+ 262:     );
+ 263:   }
+ 264: 
+ 265:   return (
+ 266:     <Box>
+ 267:       <CreateEncounterDialog
+ 268:         open={createDialogOpen}
+ 269:         onClose={() => setCreateDialogOpen(false)}
+ 270:         onCreated={(encounter) => {
+ 271:           setSuccessMessage(
+ 272:             `Encounter ${encounter.encounterNumber} created successfully.`,
+ 273:           );
+ 274:           setPage(0);
+ 275:           setStatus('');
+ 276:           setRefreshKey((value) => value + 1);
+ 277:         }}
+ 278:       />
+ 310:             and encounter history.
+ 311:           </Typography>
+ 312:         </Box>
+ 313: 
+ 314:         <Stack direction="row" spacing={2}>
+ 315:           {canCreate && (
+ 316:             <Button
+ 317:               variant="contained"
+ 318:               onClick={() => setCreateDialogOpen(true)}
+ 319:             >Start Patient Visit</Button>
+ 320:           )}
+ 321: 
+ 322:           <Button
+ 323:             variant="outlined"
+ 324:             startIcon={<RefreshIcon />}
+ 325:           onClick={() =>
+ 326:             setRefreshKey((value) => value + 1)
+ 327:           }
+ 328:           disabled={loading}
+ 329:         >
+ 330:             Refresh
+ 331:           </Button>
+ 332:         </Stack>
+ 333:       </Stack>
+ 505: 
+ 506:                     <TableCell align="right">
+ 507:                       <Button
+ 508:                         size="small"
+ 509:                         startIcon={<VisibilityIcon />}
+ 510:                         onClick={() =>
+ 511:                           setSelectedEncounterId(
+ 512:                             encounter.id,
+ 513:                           )
+ 514:                         }
+ 515:                       >
+ 516:                         View
+ 517:                       </Button>
+ 518:                     </TableCell>
+ 519:                   </TableRow>
+ 545:         />
+ 546:       </Paper>
+ 547: 
+ 548:       {/* ENCOUNTER DETAILS */}
+ 549: 
+ 550:       <Dialog
+ 551:         open={selectedEncounterId !== null}
+ 552:         onClose={closeDetails}
+ 553:         fullWidth
+ 554:         maxWidth="sm"
+ 555:       >
+ 556:         <DialogTitle>Patient Visit Details</DialogTitle>
+ 557: 
+ 558:         <DialogContent dividers>
+ 559:           {detailsLoading && (
+ 560:             <Box
+ 561:               sx={{
+ 562:                 textAlign: 'center',
+ 563:                 py: 3,
+ 564:               }}
+ 565:             >
+ 566:               <CircularProgress />
+ 617:                 {formatDate(
+ 618:                   selectedEncounter.endedAt,
+ 619:                 )}
+ 620:               </Typography>
+ 621:               <EncounterClinicalActions
+ 622:                 encounterId={selectedEncounter.id}
+ 623:                 encounterNumber={selectedEncounter.encounterNumber}
+ 624:                 status={selectedEncounter.status}
+ 625:                 permissions={user?.permissions ?? []}
+ 626:                 onUpdated={() => {
+ 627:                   setRefreshKey((value) => value + 1);
+ 628:                   setSelectedEncounterId(null);
+ 629:                   setSelectedEncounter(null);
+ 630:                 }}
+ 631:               />
+ 632:             </Stack>
+ 633:           )}
+ 634:         </DialogContent>
+ 635: 
+ 636:         <DialogActions>
+ 637:           <Button onClick={closeDetails}>
+ 638:             Close
+ 639:           </Button>
+ 640:         </DialogActions>
+ 641:       </Dialog>
+ 642:     </Box>
+ 643:   );
+ 644: }
+
+========================================
+FILE: src\components\appointments\AppointmentCreateDialog.tsx
+========================================
+Total lines: 285
+   4: import {
+   5:   Alert,
+   6:   Autocomplete,
+   7:   Box,
+   8:   Button,
+   9:   Dialog,
+  10:   DialogActions,
+  11:   DialogContent,
+  12:   DialogTitle,
+  13:   Stack,
+  14:   TextField,
+  15: } from '@mui/material';
+  16: 
+  17: import { patientsApi } from '../../api/patients.api';
+  18: import {
+  19:   appointmentsApi,
+  20:   type CreateAppointmentRequest,
+  24: import type { Patient } from '../../types/patient';
+  25: 
+  26: interface Props {
+  27:   open: boolean;
+  28:   onClose: () => void;
+  29:   onCreated: () => void;
+  30: }
+  31: 
+  32: function patientLabel(patient: Patient): string {
+  33:   const name = [
+  34:     patient.firstName,
+  35:     patient.middleName,
+  36:     patient.lastName,
+  37:   ].filter(Boolean).join(' ');
+  54: // Ethiopia uses UTC+03:00 throughout the year.
+  55: function ethiopiaToUtc(value: string): string {
+  56:   return new Date(`${value}:00+03:00`).toISOString();
+  57: }
+  58: 
+  59: export default function AppointmentCreateDialog({
+  60:   open,
+  61:   onClose,
+  62:   onCreated,
+  63: }: Props) {
+  64:   const { user } = useAuth();
+  65: 
+  66:   const [patients, setPatients] = useState<Patient[]>([]);
+  67:   const [patient, setPatient] = useState<Patient | null>(null);
+  68:   const [search, setSearch] = useState('');
+  69: 
+  70:   const [loadingPatients, setLoadingPatients] = useState(false);
+ 110:       active = false;
+ 111:       clearTimeout(timer);
+ 112:     };
+ 113:   }, [open, search]);
+ 114: 
+ 115:   const handleSubmit = async () => {
+ 116:     setError(null);
+ 117: 
+ 118:     if (!patient) {
+ 119:       setError('Select a patient.');
+ 120:       return;
+ 121:     }
+ 122: 
+ 123:     if (!user?.facilityId) {
+ 147:         setError('Appointment must be scheduled in the future.');
+ 148:         return;
+ 149:       }
+ 150: 
+ 151:       const data: CreateAppointmentRequest = {
+ 152:         patientId: patient.id,
+ 153:         facilityId: user.facilityId,
+ 154:         appointmentType: appointmentType.trim() || undefined,
+ 155:         reason: reason.trim() || undefined,
+ 156:         scheduledStart: start,
+ 157:         scheduledEnd: end,
+ 158:         notes: notes.trim() || undefined,
+ 159:       };
+ 160: 
+ 161:       setSaving(true);
+ 162: 
+ 163:       await appointmentsApi.create(data);
+ 164: 
+ 165:       onCreated();
+ 166:       onClose();
+ 167: 
+ 168:       setPatient(null);
+ 169:       setSearch('');
+ 170:       setAppointmentType('FOLLOW_UP');
+ 171:       setReason('');
+ 172:       setScheduledStart('');
+ 173:       setDuration(30);
+ 178:       setSaving(false);
+ 179:     }
+ 180:   };
+ 181: 
+ 182:   return (
+ 183:     <Dialog
+ 184:       open={open}
+ 185:       onClose={saving ? undefined : onClose}
+ 186:       fullWidth
+ 187:       maxWidth="sm"
+ 188:     >
+ 189:       <DialogTitle>New Appointment</DialogTitle>
+ 190: 
+ 191:       <DialogContent>
+ 192:         <Stack spacing={2} sx={{ mt: 1 }}>
+ 193:           {error && <Alert severity="error">{error}</Alert>}
+ 194: 
+ 195:           <Autocomplete
+ 196:             options={patients}
+ 197:             value={patient}
+ 198:             loading={loadingPatients}
+ 199:             getOptionLabel={patientLabel}
+ 263:           <Box sx={{ fontSize: 12, color: 'text.secondary' }}>
+ 264:             Appointment times are interpreted in Ethiopia local time
+ 265:             (UTC+3).
+ 266:           </Box>
+ 267:         </Stack>
+ 268:       </DialogContent>
+ 269: 
+ 270:       <DialogActions>
+ 271:         <Button onClick={onClose} disabled={saving}>
+ 272:           Cancel
+ 273:         </Button>
+ 274: 
+ 275:         <Button
+ 276:           variant="contained"
+ 277:           disabled={saving}
+ 278:           onClick={() => void handleSubmit()}
+ 279:         >
+ 280:           {saving ? 'Creating...' : 'Create Appointment'}
+ 281:         </Button>
+ 282:       </DialogActions>
+ 283:     </Dialog>
+ 284:   );
+ 285: }
+
+========================================
+FILE: src\components\encounters\CreateEncounterDialog.tsx
+========================================
+Total lines: 227
+   1: import { useState } from 'react';
+   2: import {
+   3:   Alert,
+   4:   Button,
+   5:   Dialog,
+   6:   DialogActions,
+   7:   DialogContent,
+   8:   DialogTitle,
+   9:   MenuItem,
+  10:   Stack,
+  11:   TextField,
+  12:   Typography,
+  13: } from '@mui/material';
+  14: import axios from 'axios';
+  15: 
+  16: import { useAuth } from '../../auth/AuthContext';
+  22: import type { Patient } from '../../types/patient';
+  23: 
+  24: interface Props {
+  25:   open: boolean;
+  26:   onClose: () => void;
+  27:   onCreated: (encounter: Encounter) => void;
+  28: }
+  29: 
+  30: function getErrorMessage(error: unknown): string {
+  31:   if (axios.isAxiosError(error)) {
+  32:     if (error.response?.status === 401) {
+  33:       return 'Your session has expired. Please sign in again.';
+  34:     }
+  35: 
+  44:   }
+  45: 
+  46:   return 'Unable to create encounter.';
+  47: }
+  48: 
+  49: export default function CreateEncounterDialog({
+  50:   open,
+  51:   onClose,
+  52:   onCreated,
+  53: }: Props) {
+  54:   const { user } = useAuth();
+  55: 
+  56:   const canCreate =
+  57:     user?.permissions.includes('encounter.create') ?? false;
+  58: 
+  59:   const [patient, setPatient] = useState<Patient | null>(null);
+  60:   const [encounterType, setEncounterType] = useState('OUTPATIENT');
+  61:   const [reasonForVisit, setReasonForVisit] = useState('');
+  62:   const [chiefComplaint, setChiefComplaint] = useState('');
+  63:   const [saving, setSaving] = useState(false);
+  64:   const [error, setError] = useState<string | null>(null);
+  75:     if (saving) return;
+  76:     resetForm();
+  77:     onClose();
+  78:   }
+  79: 
+  80:   async function handleSubmit() {
+  81:     if (
+  82:       !canCreate ||
+  83:       !patient ||
+  84:       !user?.facilityId ||
+  85:       !encounterType.trim() ||
+  86:       saving
+  87:     ) {
+  88:       return;
+  89:     }
+  90: 
+  91:     setSaving(true);
+  92:     setError(null);
+  93: 
+  94:     try {
+  95:       const encounter = await encountersApi.create({
+  96:         patientId: patient.id,
+  97:         facilityId: user.facilityId,
+  98:         encounterType: encounterType.trim(),
+  99:         reasonForVisit: reasonForVisit.trim() || undefined,
+ 100:         chiefComplaint: chiefComplaint.trim() || undefined,
+ 101:       });
+ 102: 
+ 103:       resetForm();
+ 104:       onCreated(encounter);
+ 105:       onClose();
+ 106:     } catch (err) {
+ 107:       setError(getErrorMessage(err));
+ 108:     } finally {
+ 109:       setSaving(false);
+ 110:     }
+ 111:   }
+ 112: 
+ 113:   const canSubmit =
+ 114:     canCreate &&
+ 115:     !!user?.facilityId &&
+ 116:     !!patient &&
+ 117:     !!encounterType.trim() &&
+ 118:     !saving;
+ 119: 
+ 120:   return (
+ 121:     <Dialog
+ 122:       open={open}
+ 123:       onClose={handleClose}
+ 124:       fullWidth
+ 125:       maxWidth="md"
+ 126:     >
+ 127:       <DialogTitle>Start Patient Visit</DialogTitle>
+ 128: 
+ 129:       <DialogContent>
+ 130:         <Stack spacing={3} sx={{ mt: 1 }}>
+ 131:           {!canCreate && (
+ 132:             <Alert severity="warning">
+ 133:               Your account does not have encounter.create permission.
+ 134:             </Alert>
+ 135:           )}
+ 136: 
+ 137:           {!user?.facilityId && (
+ 138:             <Alert severity="warning">
+ 139:               Your account has no assigned facility.
+ 205:             <Alert severity="error">
+ 206:               {error}
+ 207:             </Alert>
+ 208:           )}
+ 209:         </Stack>
+ 210:       </DialogContent>
+ 211: 
+ 212:       <DialogActions>
+ 213:         <Button onClick={handleClose} disabled={saving}>
+ 214:           Cancel
+ 215:         </Button>
+ 216: 
+ 217:         <Button
+ 218:           variant="contained"
+ 219:           disabled={!canSubmit}
+ 220:           onClick={() => void handleSubmit()}
+ 221:         >
+ 222:           {saving ? 'Creating...' : 'Start Patient Visit'}
+ 223:         </Button>
+ 224:       </DialogActions>
+ 225:     </Dialog>
+ 226:   );
+ 227: }
+
+========================================
+FILE: src\api\appointments.api.ts
+========================================
+Total lines: 115
+   9:   | 'NO_SHOW';
+  10: 
+  11: export interface Appointment {
+  12:   id: string;
+  13:   appointmentNumber: string;
+  14:   patientId: string;
+  15:   facilityId: string;
+  16:   departmentId: string | null;
+  17:   practitionerId: string | null;
+  18:   appointmentType: string | null;
+  19:   reason: string | null;
+  20:   scheduledStart: string;
+  21:   scheduledEnd: string | null;
+  22:   status: AppointmentStatus;
+  25:   createdAt: string;
+  26:   updatedAt: string;
+  27: }
+  28: 
+  29: export interface CreateAppointmentRequest {
+  30:   patientId: string;
+  31:   facilityId: string;
+  32:   departmentId?: string;
+  33:   practitionerId?: string;
+  34:   appointmentType?: string;
+  35:   reason?: string;
+  36:   scheduledStart: string;
+  37:   scheduledEnd?: string;
+  38:   notes?: string;
+  39: }
+  40: 
+  41: export interface AppointmentSearchParams {
+  42:   search?: string;
+  43:   patientId?: string;
+  44:   departmentId?: string;
+  45:   practitionerId?: string;
+  46:   status?: AppointmentStatus;
+  47:   dateFrom?: string;
+  48:   dateTo?: string;
+  49: }
+  50: 
+  51: export interface UpdateAppointmentStatusRequest {
+
+========================================
+FILE: src\api\encounters.api.ts
+========================================
+Total lines: 273
+  20: 
+  21: export interface Encounter {
+  22:   id: string;
+  23:   encounterNumber: string;
+  24: 
+  25:   patientId: string;
+  26:   facilityId: string;
+  27:   practitionerId?: string | null;
+  28: 
+  29:   encounterType: string;
+  30:   status: string;
+  31: 
+  32:   reasonForVisit?: string | null;
+  33:   chiefComplaint?: string | null;
+  47: }
+  48: 
+  49: export interface EncounterSearchParams {
+  50:   page?: number;
+  51:   limit?: number;
+  52:   patientId?: string;
+  53:   practitionerId?: string;
+  54:   status?: string;
+  55:   encounterType?: string;
+  56:   fromDate?: string;
+  57:   toDate?: string;
+  58: }
+  59: 
+  60: export interface EncounterListResponse {
+  69: 
+  70: /* ============================================
+  71:    CREATE / CLOSE ENCOUNTER
+  72: ============================================ */
+  73: 
+  74: export interface CreateEncounterRequest {
+  75:   patientId: string;
+  76:   facilityId: string;
+  77:   practitionerId?: string;
+  78: 
+  79:   encounterType: string;
+  80: 
+  81:   reasonForVisit?: string;
+  82:   chiefComplaint?: string;
+  83:   startedAt?: string;
+ 102:   height?: number;
+ 103: }
+ 104: 
+ 105: export interface VitalSignObservation {
+ 106:   id: string;
+ 107:   patientId: string;
+ 108:   encounterId: string;
+ 109: 
+ 110:   category: string;
+ 111:   code: string;
+ 112:   name: string;
+ 113: 
+ 114:   valueNumeric?: number | string | null;
+ 115:   unit?: string | null;
+ 116: 
+ 131:   onsetAt?: string;
+ 132: }
+ 133: 
+ 134: export interface EncounterDiagnosis {
+ 135:   id: string;
+ 136:   patientId: string;
+ 137:   encounterId: string;
+ 138: 
+ 139:   practitionerId?: string | null;
+ 140:   code?: string | null;
+ 141:   codeSystem?: string | null;
+ 142: 
+ 143:   description: string;
+ 144:   diagnosisType?: string | null;
+ 145:   status: string;
+ 183:   /**
+ 184:    * POST /encounters
+ 185:    * Open a new patient encounter.
+ 186:    */
+ 187:   async create(
+ 188:     data: CreateEncounterRequest,
+ 189:   ): Promise<Encounter> {
+ 190:     const response = await api.post<Encounter>(
+ 191:       '/encounters',
+ 192:       data,
+ 193:     );
+ 194: 
+ 195:     return response.data;
+ 196:   },
+ 214:   /**
+ 215:    * POST /encounters/:id/vitals
+ 216:    * Record vital signs.
+ 217:    */
+ 218:   async createVitals(
+ 219:     encounterId: string,
+ 220:     data: CreateVitalsRequest,
+ 221:   ): Promise<VitalSignObservation[]> {
+ 222:     const response = await api.post<VitalSignObservation[]>(
+ 223:       `/encounters/${encodeURIComponent(encounterId)}/vitals`,
+ 224:       data,
+ 225:     );
+ 226: 
+ 227:     return response.data;
+ 228:   },
+ 229: 
+ 230:   /**
+ 231:    * GET /encounters/:id/vitals
+ 232:    * Retrieve vital signs.
+ 233:    */
+ 234:   async getVitals(
+ 235:     encounterId: string,
+ 236:   ): Promise<VitalSignObservation[]> {
+ 237:     const response = await api.get<VitalSignObservation[]>(
+ 238:       `/encounters/${encodeURIComponent(encounterId)}/vitals`,
+ 239:     );
+ 240: 
+ 241:     return response.data;
+ 242:   },
+ 243: 
+ 244:   /**
+ 245:    * POST /encounters/:id/diagnoses
+ 246:    * Record a diagnosis.
+ 247:    */
+ 248:   async createDiagnosis(
+ 249:     encounterId: string,
+ 250:     data: CreateDiagnosisRequest,
+ 251:   ): Promise<EncounterDiagnosis> {
+ 252:     const response = await api.post<EncounterDiagnosis>(
+ 253:       `/encounters/${encodeURIComponent(encounterId)}/diagnoses`,
+ 254:       data,
+ 255:     );
+ 256: 
+ 257:     return response.data;
+ 258:   },
+ 259: 
+ 260:   /**
+ 261:    * GET /encounters/:id/diagnoses
+ 262:    * Retrieve encounter diagnoses.
+ 263:    */
+ 264:   async getDiagnoses(
+ 265:     encounterId: string,
+ 266:   ): Promise<EncounterDiagnosis[]> {
+ 267:     const response = await api.get<EncounterDiagnosis[]>(
+ 268:       `/encounters/${encodeURIComponent(encounterId)}/diagnoses`,
+ 269:     );
+ 270: 
+ 271:     return response.data;
+ 272:   },
+ 273: };
+
+PHASE 36G-4A INSPECTION COMPLETE
+No source files or database records modified.
